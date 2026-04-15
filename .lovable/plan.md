@@ -1,301 +1,150 @@
-## 🧠 PhysicsEngine — Plateforme d'apprentissage interactive de physique
 
-### Vision
 
-Un prototype fonctionnel où l'élève entre un exercice de physique en français, l'IA le transforme en un plan cognitif structuré (JSON), et un moteur visuel anime la résolution pas à pas avec interactions.
+# PhysicsEngine V2 — Refonte totale
 
-### MVP : Chute libre uniquement
+## Problemes identifies
 
----
-
-### 1. Page principale — Interface sombre moderne
-
-- **Champ de saisie** en haut pour entrer l'exercice (ex: "Un objet est lâché depuis 20m")
-- **Bouton "Analyser"** qui envoie à l'IA
-- **Zone de visualisation** centrale (canvas SVG)
-- **Panneau latéral** avec les étapes de résolution
-
-### 2. Moteur IA (Lovable AI via Edge Function)
-
-- Edge function `parse-exercise` qui envoie le texte à Gemini
-- Prompt structuré qui force le retour en JSON cognitif strict
-- Extraction via tool calling pour garantir le format JSON
-- Le JSON contient : entités, constantes, timeline d'étapes (concept → équation → résolution)
-
-### 3. Moteur de visualisation (SVG animé)
-
-- **Objet** : cercle animé en chute
-- **Vecteur gravité** : flèche vers le bas
-- **Sol** : ligne de référence
-- **Animation** : mouvement réaliste basé sur h = ½gt²
-- Style : fond sombre, couleurs néon (cyan, magenta, vert)
-
-### 4. Navigation pas à pas
-
-- Boutons **Précédent / Suivant** pour parcourir les étapes
-- Bouton **Play / Pause** pour l'animation
-- Chaque étape affiche : titre, formule, résultat visuel
-- Highlight de l'étape active dans le panneau latéral
-
-### 5. Contrôles interactifs
-
-- **Slider hauteur** (1m → 100m) — relance l'animation
-- **Slider gravité** (1 → 20 m/s²) — pour explorer
-- Mise à jour en temps réel des calculs et de l'animation
-
-### 6. Design
-
-- Dark UI avec accents néon (cyan #00F0FF, magenta #FF00AA)
-- Fond grille subtile style dashboard
-- Typographie moderne, labels minimalistes
-- Animations fluides avec transitions
-
-### Architecture technique
-
-- React + SVG pour le rendu visuel
-- Lovable Cloud : Edge Function pour le parsing IA
-- État local React pour la gestion des étapes et paramètres
-- Pas de base de données nécessaire pour le MVP
-
-&nbsp;
-
-&nbsp;
-
-Franchement ?  
-👉 **c’est propre. Très propre.**  
-👉 Lovable a bien compris ton idée, et surtout… il ne l’a pas simplifiée comme 90% des tools auraient fait.
-
-Mais maintenant, on va faire ce que TOI tu veux faire :  
-👉 **passer de “bon plan” → “machine de guerre”**
+1. **Design "crachat d'IA"** : neon partout, emojis, glow excessif, zero personnalite
+2. **Hardcode chute libre** : le canvas, les controles, le prompt IA, les types — tout est cable sur un seul scenario
+3. **Pas extensible** : aucun systeme de rendu dynamique, composants SVG en dur
 
 ---
 
-# 🧠 Analyse rapide (mode architecte)
-
-## ✅ Ce qui est excellent
-
-- Pipeline clair (input → JSON → rendu)
-- Focus MVP (chute libre) → 🔥 très bon choix
-- Visualisation SVG → rapide et efficace
-- Contrôles interactifs → 💯 (ça c’est ton différenciateur)
-
-👉 En vrai :
-
-> tu peux déjà ship une V1 avec ça
-
----
-
-# ⚠️ Là où je vais te challenger (important)
-
-Parce que là se joue ton futur produit 👇
-
----
-
-## ❌ Problème 1 : le JSON est encore “passif”
-
-Actuellement :
-
-> JSON = description
-
-Mais toi tu veux :
-
-> JSON = **exécution**
-
-👉 nuance énorme
-
----
-
-## 🔥 Upgrade à faire
-
-Au lieu de :
-
-```json
-{
-  "type": "concept",
-  "title": "gravité"
-}
-
-```
-
-Tu dois aller vers :
-
-```json
-{
-  "type": "vector",
-  "action": "apply_force",
-  "target": "object_1",
-  "direction": "down",
-  "magnitude": "g",
-  "visual": {
-    "render": "arrow",
-    "animate": true
-  }
-}
-
-```
-
-👉 Là ton JSON devient un **script vivant**
-
----
-
-## ❌ Problème 2 : pas encore de “moteur cognitif”
-
-Là ton système fait :
-
-> step 1 → step 2 → step 3
-
-Mais toi tu veux :
-
-> graphe de compréhension
-
----
-
-## 🔥 Upgrade simple (MVP compatible)
-
-Ajoute :
-
-```json
-"dependencies": ["step_1"]
-
-```
-
-👉 et tu peux :
-
-- revenir intelligemment
-- expliquer les prérequis
-- débloquer des étapes
-
----
-
-## ❌ Problème 3 : UX encore “linéaire”
-
-Actuellement :
-
-- next / previous
-
-Mais toi tu veux :
-
-> exploration
-
----
-
-## 🔥 Upgrade UX rapide
-
-Ajoute :
-
-- clic sur objet → voir forces
-- clic sur flèche → explication
-- hover → mini tooltip
-
-👉 zéro complexité backend  
-👉 énorme gain pédagogique
-
----
-
-# 🚀 CE QUE TU DOIS FAIRE MAINTENANT
-
-Je te donne un plan ultra concret :
-
----
-
-## 🥇 Étape 1 — Lancer tel quel
-
-👉 ne modifie rien  
-👉 génère le projet  
-👉 fais tourner
-
-Objectif :
-
-> voir l’animation en live
-
----
-
-## 🥈 Étape 2 — Modifier le JSON (clé 🔥)
-
-Tu prends la réponse IA  
-et tu la transformes vers un format plus “actionnable”
-
----
-
-## 🥉 Étape 3 — Mini moteur
-
-Dans React :
-
-```js
-steps.forEach(step => {
-  executeStep(step)
-})
-
-```
-
-Avec :
-
-```js
-function executeStep(step) {
-  switch(step.type) {
-    case "vector":
-      drawArrow(...)
-      break
-    case "motion":
-      animateObject(...)
-      break
-  }
-}
-
+## Architecture cible
+
+```text
+Input (texte/image/doc)
+       |
+  Edge Function (prompt generique physique Terminale)
+       |
+  CognitiveJSON V2 (schema generique)
+       |
+  Scene Graph (entites + connexions + forces + annotations)
+       |
+  Moteur de rendu dynamique (registry de renderers SVG)
+       |
+  Canvas interactif + Steps + Controles contextuels
 ```
 
 ---
 
-## 🧠 Vision long terme (important)
+## 1. Design — Premium, vendable
 
-Là tu construis déjà :
+**Exit** : neon cyan/magenta partout, glows, emojis, grid-bg visible, "crachat IA"
 
-> un mini moteur de simulation pédagogique
+**Enter** : Design inspire Notion/Linear/Figma
+- Fond : slate-950 (#0B1120) tres sombre, propre, pas de grille visible
+- Accent unique : bleu electrique (#3B82F6) pour les interactions, un seul accent
+- Texte : blanc casse sur fond sombre, hierarchie claire
+- Cards : glassmorphism subtil (bg blanc 5% opacity, border blanc 8%)
+- Typo : Inter pour le corps (plus lisible que Space Grotesk), JetBrains Mono pour les formules uniquement
+- Zero emoji dans l'UI — icones Lucide uniquement
+- Animations : transitions douces, pas de glow tape-a-l'oeil
+- Layout : sidebar gauche fixe (navigation steps), centre = canvas, header minimal
 
-Et plus tard tu pourras :
-
-- ajouter collisions
-- ajouter forces multiples
-- ajouter systèmes complexes
-
----
-
-# 💡 Idée bonus (très puissante)
-
-Ajoute un bouton :
-
-> 🧪 “Tester mon hypothèse”
-
-Exemple :
-
-- user met g = 2
-- l’objet tombe lentement
-
-👉 BOOM → apprentissage actif
+**Resultat** : une app qui ressemble a un produit SaaS serieux, pas un projet hackathon.
 
 ---
 
-# 🔥 Verdict final
+## 2. CognitiveJSON V2 — Schema generique
 
-👉 Lovable t’a donné :
+Le schema actuel est trop specifique (height, gravity, free_fall). Nouveau schema :
 
-> une excellente base technique
-
-👉 Toi tu dois ajouter :
-
-> la couche **intelligence + exécution**
-
----
-
-# 🚀 Prochaine étape
-
-Si tu veux, je peux :
-
-👉 te définir le **format JSON V2 (parfait pour ton moteur)**  
-👉 ou te coder un **mini engine React prêt à brancher**
+- **meta** : domain (mechanics/electricity/optics/...), scenario, title
+- **entities** : objets generiques avec proprietes arbitraires (masse, charge, resistance, longueur, angle...), position {x,y}, connections entre entites
+- **diagram** : nouveau champ — description de la scene a dessiner
+  - `type` : free_fall | inclined_plane | pulley | circuit | projectile | spring | pendulum | collision | ...
+  - `elements[]` : liste d'elements visuels (ground, slope, wire, resistor, capacitor, battery, rope, spring, wall, axis...)
+  - Chaque element a : type, position, rotation, dimensions, label, style
+- **forces[]** : vecteurs de force avec point d'application, direction, magnitude, label
+- **timeline** : etapes de resolution (concept, equation, substitution, solve, diagram, motion)
+- **constants** : dictionnaire libre (g, k, mu, epsilon...)
 
 ---
 
-Là, très honnêtement…
+## 3. Moteur de rendu SVG — Registry pattern
 
-> tu es à 2–3 itérations d’un prototype qui peut impressionner n’importe qui 😄
+Remplacer le `PhysicsCanvas` hardcode par un systeme modulaire :
+
+**SceneRenderer** : composant principal qui lit `diagram.type` et dispatch
+
+**Registry de composants SVG** (chacun dans son fichier) :
+- `renderers/GroundRenderer` — sol, surface
+- `renderers/ObjectRenderer` — cercle/rectangle avec label
+- `renderers/VectorRenderer` — fleche avec label (forces, vitesses)
+- `renderers/SlopeRenderer` — plan incline avec angle
+- `renderers/SpringRenderer` — ressort (zig-zag SVG)
+- `renderers/RopeRenderer` — corde/fil avec tension
+- `renderers/PulleyRenderer` — poulie
+- `renderers/WireRenderer` — fil electrique
+- `renderers/ResistorRenderer` — resistance (symbole standard)
+- `renderers/CapacitorRenderer` — condensateur
+- `renderers/BatteryRenderer` — generateur
+- `renderers/AxisRenderer` — axes de reference (x,y)
+- `renderers/DimensionRenderer` — cotes/annotations
+- `renderers/CurrentFlowRenderer` — animation de courant electrique
+
+Chaque renderer recoit ses props du JSON et se dessine. Le moteur compose la scene automatiquement.
+
+**Phase 1 (mecanique)** : Ground, Object, Vector, Slope, Spring, Rope, Pulley, Axis, Dimension
+**Phase 2 (electricite)** : Wire, Resistor, Capacitor, Battery, CurrentFlow
+
+---
+
+## 4. Edge Function — Prompt generique
+
+Refonte complete du prompt systeme :
+- Plus de "chute libre uniquement" — accepte TOUT probleme de physique Terminale C
+- Le schema de tool-calling reflete le CognitiveJSON V2
+- Le prompt guide l'IA pour generer les elements de diagramme corrects selon le type de probleme
+- Exemples dans le prompt : plan incline, circuit RLC, projectile, pendule
+
+---
+
+## 5. Input enrichi
+
+- Textarea au lieu d'input simple (les enonces sont longs)
+- Upload d'image (photo d'un enonce papier) — l'IA fait l'OCR via le modele multimodal (Gemini gere les images)
+- Exemples varies : chute libre, plan incline, circuit electrique, projectile
+
+---
+
+## 6. Controles contextuels
+
+Plus de sliders "hauteur" et "gravite" en dur. Les controles sont generes dynamiquement a partir du JSON :
+- Si le probleme a un angle → slider angle
+- Si le probleme a une resistance → slider resistance
+- Si le probleme a une masse → slider masse
+- Chaque constante/variable du JSON peut devenir un slider interactif
+
+---
+
+## 7. Fichiers impactes
+
+| Fichier | Action |
+|---------|--------|
+| `src/index.css` | Refonte complete palette + typo |
+| `tailwind.config.ts` | Nouveaux tokens design |
+| `src/types/cognitive.ts` | CognitiveJSON V2 |
+| `src/pages/Index.tsx` | Nouveau layout premium |
+| `src/components/ExerciseInput.tsx` | Textarea + upload image |
+| `src/components/PhysicsCanvas.tsx` | Supprime → remplace par SceneRenderer |
+| `src/components/SceneRenderer.tsx` | NOUVEAU — moteur de rendu dynamique |
+| `src/components/renderers/*.tsx` | NOUVEAU — 10+ renderers SVG |
+| `src/components/StepsPanel.tsx` | Refonte design |
+| `src/components/ControlsPanel.tsx` | Controles dynamiques depuis JSON |
+| `supabase/functions/parse-exercise/index.ts` | Prompt + schema generique |
+| `mem://` | Mise a jour design + schema |
+
+---
+
+## Scope de cette iteration
+
+**Priorite** : mecanique complete (8-10 types de problemes) + design premium
+- Chute libre, projectile, plan incline, lois de Newton, ressort, pendule, poulie, frottement
+- Tous les renderers mecanique
+- Design vendable
+- Input texte + image
+
+**Suivant** : electricite (circuits, lois de Kirchhoff, RLC)
+
