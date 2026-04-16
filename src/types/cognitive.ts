@@ -1,31 +1,56 @@
 export interface PhysicsEntity {
   id: string;
   type: string;
-  mass?: number;
-  initial_position?: number;
+  label: string;
+  properties: Record<string, number | string>;
+  position?: { x: number; y: number };
+  connections?: string[];
+}
+
+export interface DiagramElement {
+  id: string;
+  type: "ground" | "slope" | "object" | "spring" | "rope" | "pulley" | "wall" | "axis" | "wire" | "resistor" | "capacitor" | "battery" | "switch" | "projectile_path";
+  position: { x: number; y: number };
+  rotation?: number;
+  dimensions?: { width: number; height: number };
   label?: string;
+  style?: {
+    color?: string;
+    strokeWidth?: number;
+    dashed?: boolean;
+    fill?: string;
+  };
+  properties?: Record<string, number | string>;
+}
+
+export interface Force {
+  id: string;
+  label: string;
+  target: string;
+  application_point: { x: number; y: number };
+  direction: { x: number; y: number };
+  magnitude: string;
+  color?: string;
+}
+
+export interface Diagram {
+  type: string;
+  width: number;
+  height: number;
+  elements: DiagramElement[];
+  forces: Force[];
 }
 
 export interface TimelineStep {
   id: string;
-  type: "concept" | "equation" | "solve" | "vector" | "motion";
+  type: "concept" | "equation" | "substitution" | "solve" | "diagram" | "motion";
   title: string;
   description?: string;
   formula?: string;
-  action?: string;
-  target?: string;
-  direction?: string;
-  magnitude?: string;
-  result?: Record<string, number>;
+  result?: Record<string, string | number>;
   dependencies?: string[];
-  visual?: {
-    type: string;
-    render?: string;
-    animate?: boolean;
-    direction?: string;
-    label?: string;
-    color?: string;
-  };
+  highlight_elements?: string[];
+  highlight_forces?: string[];
 }
 
 export interface CognitiveJSON {
@@ -36,5 +61,6 @@ export interface CognitiveJSON {
   };
   entities: PhysicsEntity[];
   constants: Record<string, number>;
+  diagram: Diagram;
   timeline: TimelineStep[];
 }
