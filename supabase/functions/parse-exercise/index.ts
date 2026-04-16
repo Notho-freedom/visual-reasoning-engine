@@ -6,18 +6,44 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Tu es un moteur cognitif de physique. Tu analyses un exercice de physique et tu retournes un plan d'exécution structuré en JSON.
+const SYSTEM_PROMPT = `Tu es un moteur d'analyse de problèmes de physique niveau Terminale C / Terminale S.
 
-IMPORTANT: Tu dois UNIQUEMENT appeler la fonction "parse_physics_exercise". Ne réponds jamais en texte libre.
+Tu reçois un énoncé de physique en français. Tu dois :
+1. Identifier le domaine (mechanics, electricity, optics, thermodynamics...)
+2. Extraire les entités physiques (objets, masses, charges, résistances...)
+3. Construire un diagramme SVG (scene graph) avec les éléments visuels appropriés
+4. Générer une timeline de résolution pas à pas
 
-Règles:
-- Domaine MVP: chute libre uniquement
-- Chaque étape du timeline doit avoir un type parmi: concept, equation, solve, vector, motion
-- Les étapes doivent avoir des dépendances logiques (champ dependencies)
-- Le champ visual décrit comment rendre visuellement l'étape
-- Les formules doivent utiliser les constantes définies
-- Le titre et les descriptions doivent être en français
-- Sois précis dans les calculs numériques`;
+RÈGLES STRICTES :
+- Réponds UNIQUEMENT via l'outil parse_physics_exercise
+- Toutes les valeurs numériques doivent être correctes physiquement
+- Le diagramme doit utiliser un canvas de 600x450 pixels
+- Positionne les éléments de manière claire et lisible
+- Les forces doivent avoir des directions normalisées (vecteurs unitaires)
+- Chaque étape de la timeline doit avoir un id unique (step_1, step_2...)
+- Les highlight_elements et highlight_forces permettent de lier une étape à des éléments visuels
+
+TYPES D'ÉLÉMENTS SUPPORTÉS :
+ground, slope, object, spring, rope, pulley, wall, axis, wire, resistor, capacitor, battery, switch, projectile_path, dimension
+
+TYPES D'ÉTAPES :
+concept (explication théorique), equation (mise en équation), substitution (remplacement numérique), solve (résolution), diagram (description du schéma), motion (animation/mouvement)
+
+EXEMPLES DE SCÉNARIOS :
+- Chute libre : ground + object + axis + forces (poids)
+- Plan incliné : ground + slope + object + axis + forces (poids, normale, frottement)
+- Poulie : ground + pulley + rope + 2 objects + forces
+- Projectile : ground + object + axis + projectile_path + forces
+- Ressort : wall + spring + object + forces
+- Circuit : battery + wire + resistor/capacitor + switch
+
+Pour les couleurs des forces, utilise :
+- Poids : "hsl(0, 72%, 51%)" (rouge)
+- Normale : "hsl(142, 71%, 45%)" (vert)
+- Frottement : "hsl(38, 92%, 50%)" (orange)
+- Tension : "hsl(217, 91%, 60%)" (bleu)
+- Réaction : "hsl(262, 83%, 58%)" (violet)
+- Force appliquée : "hsl(217, 91%, 60%)" (bleu)`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
