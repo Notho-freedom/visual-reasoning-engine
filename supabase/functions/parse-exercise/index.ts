@@ -71,7 +71,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: `Analyse cet exercice de physique et retourne le plan cognitif:\n\n${exercise}` },
@@ -81,16 +81,16 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "parse_physics_exercise",
-              description: "Retourne le plan cognitif structuré pour un exercice de physique",
+              description: "Retourne l'analyse structurée d'un problème de physique avec diagramme et résolution.",
               parameters: {
                 type: "object",
                 properties: {
                   meta: {
                     type: "object",
                     properties: {
-                      domain: { type: "string" },
-                      scenario: { type: "string" },
-                      title: { type: "string", description: "Titre descriptif en français" },
+                      domain: { type: "string", description: "Domaine : mechanics, electricity, optics, thermodynamics" },
+                      scenario: { type: "string", description: "Type : free_fall, inclined_plane, projectile, pulley, spring, pendulum, circuit, etc." },
+                      title: { type: "string", description: "Titre court décrivant le problème" },
                     },
                     required: ["domain", "scenario", "title"],
                   },
@@ -101,18 +101,89 @@ serve(async (req) => {
                       properties: {
                         id: { type: "string" },
                         type: { type: "string" },
-                        mass: { type: "number" },
-                        initial_position: { type: "number" },
                         label: { type: "string" },
+                        properties: {
+                          type: "object",
+                          additionalProperties: { type: "number" },
+                        },
+                        position: {
+                          type: "object",
+                          properties: { x: { type: "number" }, y: { type: "number" } },
+                        },
+                        connections: { type: "array", items: { type: "string" } },
                       },
-                      required: ["id", "type"],
+                      required: ["id", "type", "label", "properties"],
                     },
                   },
                   constants: {
                     type: "object",
+                    additionalProperties: { type: "number" },
+                    description: "Constantes du problème (g, k, mu, etc.)",
+                  },
+                  diagram: {
+                    type: "object",
                     properties: {
-                      g: { type: "number" },
+                      type: { type: "string" },
+                      width: { type: "number" },
+                      height: { type: "number" },
+                      elements: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            type: { type: "string", enum: ["ground", "slope", "object", "spring", "rope", "pulley", "wall", "axis", "wire", "resistor", "capacitor", "battery", "switch", "projectile_path", "dimension"] },
+                            position: {
+                              type: "object",
+                              properties: { x: { type: "number" }, y: { type: "number" } },
+                              required: ["x", "y"],
+                            },
+                            rotation: { type: "number" },
+                            dimensions: {
+                              type: "object",
+                              properties: { width: { type: "number" }, height: { type: "number" } },
+                            },
+                            label: { type: "string" },
+                            style: {
+                              type: "object",
+                              properties: {
+                                color: { type: "string" },
+                                strokeWidth: { type: "number" },
+                                dashed: { type: "boolean" },
+                                fill: { type: "string" },
+                              },
+                            },
+                            properties: { type: "object", additionalProperties: {} },
+                          },
+                          required: ["id", "type", "position"],
+                        },
+                      },
+                      forces: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            label: { type: "string" },
+                            target: { type: "string" },
+                            application_point: {
+                              type: "object",
+                              properties: { x: { type: "number" }, y: { type: "number" } },
+                              required: ["x", "y"],
+                            },
+                            direction: {
+                              type: "object",
+                              properties: { x: { type: "number" }, y: { type: "number" } },
+                              required: ["x", "y"],
+                            },
+                            magnitude: { type: "string" },
+                            color: { type: "string" },
+                          },
+                          required: ["id", "label", "target", "application_point", "direction", "magnitude"],
+                        },
+                      },
                     },
+                    required: ["type", "width", "height", "elements", "forces"],
                   },
                   timeline: {
                     type: "array",
@@ -120,40 +191,20 @@ serve(async (req) => {
                       type: "object",
                       properties: {
                         id: { type: "string" },
-                        type: { type: "string", enum: ["concept", "equation", "solve", "vector", "motion"] },
+                        type: { type: "string", enum: ["concept", "equation", "substitution", "solve", "diagram", "motion"] },
                         title: { type: "string" },
                         description: { type: "string" },
                         formula: { type: "string" },
-                        action: { type: "string" },
-                        target: { type: "string" },
-                        direction: { type: "string" },
-                        magnitude: { type: "string" },
-                        result: {
-                          type: "object",
-                          additionalProperties: { type: "number" },
-                        },
-                        dependencies: {
-                          type: "array",
-                          items: { type: "string" },
-                        },
-                        visual: {
-                          type: "object",
-                          properties: {
-                            type: { type: "string" },
-                            render: { type: "string" },
-                            animate: { type: "boolean" },
-                            direction: { type: "string" },
-                            label: { type: "string" },
-                            color: { type: "string" },
-                          },
-                        },
+                        result: { type: "object", additionalProperties: {} },
+                        dependencies: { type: "array", items: { type: "string" } },
+                        highlight_elements: { type: "array", items: { type: "string" } },
+                        highlight_forces: { type: "array", items: { type: "string" } },
                       },
                       required: ["id", "type", "title"],
                     },
                   },
                 },
-                required: ["meta", "entities", "constants", "timeline"],
-                additionalProperties: false,
+                required: ["meta", "entities", "constants", "diagram", "timeline"],
               },
             },
           },
