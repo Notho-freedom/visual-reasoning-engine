@@ -8,42 +8,145 @@ const corsHeaders = {
 
 const SYSTEM_PROMPT = `Tu es un moteur d'analyse de problèmes de physique niveau Terminale C / Terminale S.
 
-Tu reçois un énoncé de physique en français. Tu dois :
-1. Identifier le domaine (mechanics, electricity, optics, thermodynamics...)
-2. Extraire les entités physiques (objets, masses, charges, résistances...)
-3. Construire un diagramme SVG (scene graph) avec les éléments visuels appropriés
-4. Générer une timeline de résolution pas à pas
+PRINCIPE FONDAMENTAL — TU NE DESSINES PAS, TU DÉCRIS LA PHYSIQUE.
+Tu ne donnes JAMAIS de coordonnées en pixels.
+Tu décris la scène en termes physiques (angle en degrés, distance en mètres, masse en kg).
+Un moteur de layout calculera ensuite la géométrie exacte (positions, vecteurs forces).
 
-RÈGLES STRICTES :
-- Réponds UNIQUEMENT via l'outil parse_physics_exercise
-- Toutes les valeurs numériques doivent être correctes physiquement
-- Le diagramme doit utiliser un canvas de 600x450 pixels
-- Positionne les éléments de manière claire et lisible
-- Les forces doivent avoir des directions normalisées (vecteurs unitaires)
-- Chaque étape de la timeline doit avoir un id unique (step_1, step_2...)
-- Les highlight_elements et highlight_forces permettent de lier une étape à des éléments visuels
+ÉTAPES :
+1. Identifie le domaine (mechanics / electricity / optics)
+2. Identifie le SCÉNARIO parmi : free_fall, inclined_plane, projectile, pulley, spring, pendulum, horizontal_motion
+3. Extrais les paramètres physiques (params) : angle, length, height, v0, theta, x, L, etc.
+4. Liste les objets (objects) avec masse, taille, ancrage
+5. Liste les forces (forces) appliquées sur chaque objet : type + label + magnitude symbolique
+6. Définis les constantes numériques (constants) : g, m, m1, m2, mu, k, alpha, theta, h, v0...
+7. Construis la timeline de résolution étape par étape
 
-TYPES D'ÉLÉMENTS SUPPORTÉS :
-ground, slope, object, spring, rope, pulley, wall, axis, wire, resistor, capacitor, battery, switch, projectile_path, dimension
+TYPES DE FORCES (utilise EXACTEMENT ces valeurs) :
+- "weight" : poids (mg, vers le bas) — pas besoin de direction
+- "normal" : réaction normale du support — pas besoin de direction
+- "friction" : frottement — préciser orientation: "up_slope" ou "down_slope"
+- "tension" : tension de corde — pas besoin de direction
+- "spring" : force de rappel ressort — pas besoin de direction
+- "applied" : force appliquée — fournir direction {x, y} unitaire en repère physique (Y vers le haut)
+- "custom" : force quelconque — fournir direction {x, y}
 
-TYPES D'ÉTAPES :
-concept (explication théorique), equation (mise en équation), substitution (remplacement numérique), solve (résolution), diagram (description du schéma), motion (animation/mouvement)
+EXEMPLES :
 
-EXEMPLES DE SCÉNARIOS :
-- Chute libre : ground + object + axis + forces (poids)
-- Plan incliné : ground + slope + object + axis + forces (poids, normale, frottement)
-- Poulie : ground + pulley + rope + 2 objects + forces
-- Projectile : ground + object + axis + projectile_path + forces
-- Ressort : wall + spring + object + forces
-- Circuit : battery + wire + resistor/capacitor + switch
+Plan incliné, masse 5kg, angle 30°, frottement μ=0.2 :
+{
+  "diagram": {
+    "scenario": "inclined_plane",
+    "params": { "angle": 30, "length": 4 },
+    "showAxis": true,
+    "objects": [
+      { "id": "block", "type": "block", "label": "m", "mass": 5, "anchor": "slope", "distance": 2.5, "size": 0.6 }
+    ],
+    "forces": [
+      { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
+      { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" },
+      { "id": "f", "target": "block", "type": "friction", "label": "f", "magnitude": "μN", "orientation": "up_slope" }
+    ]
+  },
+  "constants": { "g": 9.81, "m": 5, "alpha": 30, "mu": 0.2 }
+}
 
-Pour les couleurs des forces, utilise :
-- Poids : "hsl(0, 72%, 51%)" (rouge)
-- Normale : "hsl(142, 71%, 45%)" (vert)
-- Frottement : "hsl(38, 92%, 50%)" (orange)
-- Tension : "hsl(217, 91%, 60%)" (bleu)
-- Réaction : "hsl(262, 83%, 58%)" (violet)
-- Force appliquée : "hsl(217, 91%, 60%)" (bleu)`;
+Chute libre, hauteur 20m :
+{
+  "diagram": {
+    "scenario": "free_fall",
+    "params": { "height": 20 },
+    "showAxis": true,
+    "objects": [{ "id": "ball", "type": "ball", "label": "m", "mass": 1, "size": 0.4 }],
+    "forces": [{ "id": "P", "target": "ball", "type": "weight", "label": "P", "magnitude": "mg" }]
+  },
+  "constants": { "g": 9.81, "m": 1, "h": 20 }
+}
+
+Tir oblique v0=20 m/s, θ=45° :
+{
+  "diagram": {
+    "scenario": "projectile",
+    "params": { "v0": 20, "theta": 45 },
+    "showAxis": true,
+    "objects": [{ "id": "p", "type": "ball", "label": "m", "mass": 0.5, "size": 0.4 }],
+    "forces": [{ "id": "P", "target": "p", "type": "weight", "label": "P", "magnitude": "mg" }]
+  },
+  "constants": { "g": 9.81, "m": 0.5, "v0": 20, "theta": 45 }
+}
+
+Poulie avec deux masses m1=2kg, m2=3kg :
+{
+  "diagram": {
+    "scenario": "pulley",
+    "params": { "length": 2.5 },
+    "objects": [
+      { "id": "m1", "type": "block", "label": "m₁", "mass": 2 },
+      { "id": "m2", "type": "block", "label": "m₂", "mass": 3 }
+    ],
+    "forces": [
+      { "id": "P1", "target": "m1", "type": "weight", "label": "P₁", "magnitude": "m₁g" },
+      { "id": "T1", "target": "m1", "type": "tension", "label": "T", "magnitude": "T" },
+      { "id": "P2", "target": "m2", "type": "weight", "label": "P₂", "magnitude": "m₂g" },
+      { "id": "T2", "target": "m2", "type": "tension", "label": "T", "magnitude": "T" }
+    ]
+  },
+  "constants": { "g": 9.81, "m1": 2, "m2": 3 }
+}
+
+Pendule simple, longueur 1.2m, angle 25° :
+{
+  "diagram": {
+    "scenario": "pendulum",
+    "params": { "length": 1.2, "angle": 25 },
+    "objects": [{ "id": "bob", "type": "ball", "label": "m", "mass": 0.5, "size": 0.2 }],
+    "forces": [
+      { "id": "P", "target": "bob", "type": "weight", "label": "P", "magnitude": "mg" },
+      { "id": "T", "target": "bob", "type": "tension", "label": "T", "magnitude": "T" }
+    ]
+  },
+  "constants": { "g": 9.81, "m": 0.5, "L": 1.2, "theta": 25 }
+}
+
+Ressort horizontal, k=80 N/m, compression x=0.2m, masse 1kg :
+{
+  "diagram": {
+    "scenario": "spring",
+    "params": { "k": 80, "x": 0.2, "L": 1.2 },
+    "showAxis": true,
+    "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 1, "size": 0.5 }],
+    "forces": [
+      { "id": "Fr", "target": "block", "type": "spring", "label": "F", "magnitude": "-kx" },
+      { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
+      { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" }
+    ]
+  },
+  "constants": { "g": 9.81, "m": 1, "k": 80, "x": 0.2, "L": 1.2 }
+}
+
+Mouvement horizontal avec force appliquée F=20N, μ=0.1, m=4kg :
+{
+  "diagram": {
+    "scenario": "horizontal_motion",
+    "params": {},
+    "showAxis": true,
+    "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 4, "size": 0.6 }],
+    "forces": [
+      { "id": "F", "target": "block", "type": "applied", "label": "F", "magnitude": "F", "direction": { "x": 1, "y": 0 }, "value": 20 },
+      { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
+      { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" },
+      { "id": "f", "target": "block", "type": "friction", "label": "f", "magnitude": "μN", "orientation": "down_slope" }
+    ]
+  },
+  "constants": { "g": 9.81, "m": 4, "mu": 0.1 }
+}
+
+TIMELINE :
+- Type d'étape : "concept", "equation", "substitution", "solve", "diagram", "motion"
+- Chaque étape a un id unique (step_1, step_2...)
+- highlight_elements/highlight_forces : ids pour mettre en valeur visuellement
+
+RÈGLE ABSOLUE : Réponds UNIQUEMENT via l'outil parse_physics_exercise. AUCUNE coordonnée pixel.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -74,88 +177,60 @@ serve(async (req) => {
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Analyse cet exercice de physique et retourne le plan cognitif:\n\n${exercise}` },
+          { role: "user", content: `Analyse cet exercice et retourne le plan cognitif sémantique:\n\n${exercise}` },
         ],
         tools: [
           {
             type: "function",
             function: {
               name: "parse_physics_exercise",
-              description: "Retourne l'analyse structurée d'un problème de physique avec diagramme et résolution.",
+              description: "Retourne l'analyse structurée d'un problème de physique en termes PHYSIQUES (jamais en pixels).",
               parameters: {
                 type: "object",
                 properties: {
                   meta: {
                     type: "object",
                     properties: {
-                      domain: { type: "string", description: "Domaine : mechanics, electricity, optics, thermodynamics" },
-                      scenario: { type: "string", description: "Type : free_fall, inclined_plane, projectile, pulley, spring, pendulum, circuit, etc." },
-                      title: { type: "string", description: "Titre court décrivant le problème" },
+                      domain: { type: "string" },
+                      scenario: { type: "string" },
+                      title: { type: "string" },
                     },
                     required: ["domain", "scenario", "title"],
-                  },
-                  entities: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        type: { type: "string" },
-                        label: { type: "string" },
-                        properties: {
-                          type: "object",
-                          additionalProperties: { type: "number" },
-                        },
-                        position: {
-                          type: "object",
-                          properties: { x: { type: "number" }, y: { type: "number" } },
-                        },
-                        connections: { type: "array", items: { type: "string" } },
-                      },
-                      required: ["id", "type", "label", "properties"],
-                    },
                   },
                   constants: {
                     type: "object",
                     additionalProperties: { type: "number" },
-                    description: "Constantes du problème (g, k, mu, etc.)",
                   },
                   diagram: {
                     type: "object",
                     properties: {
-                      type: { type: "string" },
-                      width: { type: "number" },
-                      height: { type: "number" },
-                      elements: {
+                      scenario: {
+                        type: "string",
+                        enum: ["free_fall", "inclined_plane", "projectile", "pulley", "spring", "pendulum", "horizontal_motion", "circuit", "generic"],
+                      },
+                      params: {
+                        type: "object",
+                        additionalProperties: { type: "number" },
+                      },
+                      showAxis: { type: "boolean" },
+                      objects: {
                         type: "array",
                         items: {
                           type: "object",
                           properties: {
                             id: { type: "string" },
-                            type: { type: "string", enum: ["ground", "slope", "object", "spring", "rope", "pulley", "wall", "axis", "wire", "resistor", "capacitor", "battery", "switch", "projectile_path", "dimension"] },
+                            type: { type: "string", enum: ["block", "ball", "particle", "mass"] },
+                            label: { type: "string" },
+                            mass: { type: "number" },
+                            anchor: { type: "string" },
+                            distance: { type: "number" },
+                            size: { type: "number" },
                             position: {
                               type: "object",
                               properties: { x: { type: "number" }, y: { type: "number" } },
-                              required: ["x", "y"],
                             },
-                            rotation: { type: "number" },
-                            dimensions: {
-                              type: "object",
-                              properties: { width: { type: "number" }, height: { type: "number" } },
-                            },
-                            label: { type: "string" },
-                            style: {
-                              type: "object",
-                              properties: {
-                                color: { type: "string" },
-                                strokeWidth: { type: "number" },
-                                dashed: { type: "boolean" },
-                                fill: { type: "string" },
-                              },
-                            },
-                            properties: { type: "object", additionalProperties: {} },
                           },
-                          required: ["id", "type", "position"],
+                          required: ["id", "type"],
                         },
                       },
                       forces: {
@@ -164,26 +239,26 @@ serve(async (req) => {
                           type: "object",
                           properties: {
                             id: { type: "string" },
-                            label: { type: "string" },
                             target: { type: "string" },
-                            application_point: {
-                              type: "object",
-                              properties: { x: { type: "number" }, y: { type: "number" } },
-                              required: ["x", "y"],
+                            type: {
+                              type: "string",
+                              enum: ["weight", "normal", "friction", "tension", "applied", "spring", "drag", "reaction", "custom"],
                             },
+                            label: { type: "string" },
+                            magnitude: { type: "string" },
+                            value: { type: "number" },
                             direction: {
                               type: "object",
                               properties: { x: { type: "number" }, y: { type: "number" } },
-                              required: ["x", "y"],
                             },
-                            magnitude: { type: "string" },
+                            orientation: { type: "string" },
                             color: { type: "string" },
                           },
-                          required: ["id", "label", "target", "application_point", "direction", "magnitude"],
+                          required: ["id", "target", "type", "label"],
                         },
                       },
                     },
-                    required: ["type", "width", "height", "elements", "forces"],
+                    required: ["scenario", "params", "objects", "forces"],
                   },
                   timeline: {
                     type: "array",
@@ -204,7 +279,7 @@ serve(async (req) => {
                     },
                   },
                 },
-                required: ["meta", "entities", "constants", "diagram", "timeline"],
+                required: ["meta", "constants", "diagram", "timeline"],
               },
             },
           },
