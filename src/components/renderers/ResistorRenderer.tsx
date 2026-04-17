@@ -1,13 +1,13 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
 const ResistorRenderer: React.FC<Props> = ({ element }) => {
   const { x, y } = element.position;
-  const w = element.dimensions?.width ?? 60;
+  const w = element.size?.w ?? 60;
   const h = 14;
   const zigW = w / 6;
 

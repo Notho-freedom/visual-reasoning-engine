@@ -1,14 +1,14 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
 const WireRenderer: React.FC<Props> = ({ element }) => {
   const { x, y } = element.position;
-  const endX = x + (element.dimensions?.width ?? 100);
-  const endY = y + (element.dimensions?.height ?? 0);
+  const endX = element.end?.x ?? x + 100;
+  const endY = element.end?.y ?? y;
 
   return (
     <line

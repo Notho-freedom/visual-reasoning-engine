@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Atom } from "lucide-react";
 import ExerciseInput from "@/components/ExerciseInput";
@@ -6,6 +6,7 @@ import SceneRenderer from "@/components/SceneRenderer";
 import StepsPanel from "@/components/StepsPanel";
 import ControlsPanel from "@/components/ControlsPanel";
 import { parseExercise } from "@/lib/api";
+import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
 
 const Index = () => {
@@ -27,12 +28,13 @@ const Index = () => {
 
       toast({
         title: "Analyse terminée",
-        description: `${result.timeline.length} étapes identifiées — ${result.meta.scenario}`,
+        description: `${result.timeline.length} étapes — ${result.meta.scenario}`,
       });
-    } catch (err: any) {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Impossible d'analyser l'exercice";
       toast({
         title: "Erreur d'analyse",
-        description: err.message || "Impossible d'analyser l'exercice",
+        description: msg,
         variant: "destructive",
       });
     } finally {
@@ -40,11 +42,22 @@ const Index = () => {
     }
   }, [toast]);
 
+  // Recalcul du layout à chaque changement de constantes
+  const scene = useMemo(() => {
+    if (!data) return null;
+    try {
+      return computeLayout({ ...data, constants });
+    } catch (e) {
+      console.error("Layout error:", e);
+      return null;
+    }
+  }, [data, constants]);
+
   const totalSteps = data?.timeline.length || 0;
+  const step = data?.timeline[currentStep];
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border px-6 h-12 flex items-center">
         <div className="max-w-screen-xl mx-auto w-full flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -61,12 +74,9 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main */}
       <main className="max-w-screen-xl mx-auto px-6 py-6">
-        {/* Input */}
         <ExerciseInput onSubmit={handleSubmit} isLoading={isLoading} />
 
-        {/* Loading */}
         {isLoading && (
           <div className="flex items-center justify-center py-24">
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -76,13 +86,11 @@ const Index = () => {
           </div>
         )}
 
-        {/* Results */}
-        {data && !isLoading && (
+        {data && scene && !isLoading && (
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
-            {/* Canvas + controls */}
             <div className="space-y-4">
               <div className="rounded-lg border border-border overflow-hidden glass-card">
-                <SceneRenderer data={data} currentStep={currentStep} />
+                <SceneRenderer scene={scene} step={step} />
               </div>
               <ControlsPanel
                 constants={constants}
@@ -97,7 +105,6 @@ const Index = () => {
               />
             </div>
 
-            {/* Steps sidebar */}
             <div className="rounded-lg border border-border p-4 glass-card max-h-[600px] overflow-y-auto">
               <StepsPanel
                 steps={data.timeline}
@@ -108,7 +115,6 @@ const Index = () => {
           </div>
         )}
 
-        {/* Empty state */}
         {!data && !isLoading && (
           <div className="flex items-center justify-center py-24">
             <div className="text-center space-y-3 max-w-sm">
@@ -117,7 +123,7 @@ const Index = () => {
                 Entrez un exercice de physique
               </h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Mécanique, électricité, optique — le moteur analyse l'énoncé et construit un schéma interactif avec résolution pas à pas.
+                Mécanique, électricité — le moteur analyse l'énoncé, calcule la géométrie exacte et construit un schéma rigoureux.
               </p>
             </div>
           </div>
