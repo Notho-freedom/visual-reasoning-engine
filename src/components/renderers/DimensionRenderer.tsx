@@ -1,16 +1,14 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
 const DimensionRenderer: React.FC<Props> = ({ element }) => {
   const { x, y } = element.position;
-  const w = element.dimensions?.width ?? 0;
-  const h = element.dimensions?.height ?? 0;
-  const endX = x + w;
-  const endY = y + h;
+  const endX = element.end?.x ?? x;
+  const endY = element.end?.y ?? y;
 
   return (
     <g opacity={0.5}>

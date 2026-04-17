@@ -1,8 +1,8 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
 const BatteryRenderer: React.FC<Props> = ({ element }) => {

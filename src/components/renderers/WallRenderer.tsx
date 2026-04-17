@@ -1,13 +1,13 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
 const WallRenderer: React.FC<Props> = ({ element }) => {
   const { x, y } = element.position;
-  const h = element.dimensions?.height ?? 200;
+  const h = element.end ? Math.abs(element.end.y - y) : (element.size?.h ?? 200);
 
   return (
     <g>
