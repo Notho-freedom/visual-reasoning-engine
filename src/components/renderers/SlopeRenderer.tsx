@@ -1,47 +1,48 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
+/**
+ * Triangle de pente. Utilise meta.x1/y1/x2/y2/x3/y3 (coords SVG).
+ */
 const SlopeRenderer: React.FC<Props> = ({ element }) => {
-  const { x, y } = element.position;
-  const w = element.dimensions?.width ?? 300;
-  const h = element.dimensions?.height ?? 150;
-  const angle = element.rotation ?? 30;
+  const m = element.meta as Record<string, number> | undefined;
+  if (!m) return null;
+  const points = `${m.x1},${m.y1} ${m.x2},${m.y2} ${m.x3},${m.y3}`;
 
   return (
     <g>
-      {/* Slope surface */}
       <polygon
-        points={`${x},${y} ${x + w},${y} ${x + w},${y - h}`}
-        fill="hsl(var(--secondary) / 0.3)"
-        stroke="hsl(var(--foreground) / 0.3)"
+        points={points}
+        fill="hsl(var(--secondary) / 0.35)"
+        stroke="hsl(var(--foreground) / 0.4)"
         strokeWidth={1.5}
       />
-      {/* Angle arc */}
-      <path
-        d={`M ${x + 40},${y} A 40 40 0 0 0 ${x + 40 * Math.cos(angle * Math.PI / 180)},${y - 40 * Math.sin(angle * Math.PI / 180)}`}
-        fill="none"
-        stroke="hsl(var(--primary))"
-        strokeWidth={1}
-        opacity={0.6}
-      />
-      {/* Angle label */}
-      <text
-        x={x + 50}
-        y={y - 10}
-        fill="hsl(var(--primary))"
-        fontSize={11}
-        fontFamily="JetBrains Mono"
-      >
-        α={angle}°
-      </text>
+      {/* Hachures sous la base */}
+      {Array.from({ length: 14 }).map((_, i) => {
+        const t = i / 14;
+        const px = m.x1 + (m.x2 - m.x1) * t;
+        const py = m.y1 + (m.y2 - m.y1) * t;
+        return (
+          <line
+            key={i}
+            x1={px}
+            y1={py}
+            x2={px - 6}
+            y2={py + 8}
+            stroke="hsl(var(--muted-foreground))"
+            strokeWidth={1}
+            strokeOpacity={0.4}
+          />
+        );
+      })}
       {element.label && (
         <text
-          x={x + w / 2}
-          y={y + 20}
+          x={(m.x1 + m.x2 + m.x3) / 3}
+          y={(m.y1 + m.y2 + m.y3) / 3}
           fill="hsl(var(--muted-foreground))"
           fontSize={11}
           fontFamily="Inter"

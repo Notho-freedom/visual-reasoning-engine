@@ -1,43 +1,44 @@
 import React from "react";
-import type { DiagramElement } from "@/types/cognitive";
+import type { ResolvedElement } from "@/types/cognitive";
 
 interface Props {
-  element: DiagramElement;
+  element: ResolvedElement;
 }
 
+/**
+ * Trajectoire du projectile. meta.points contient un JSON.stringify d'un tableau de {x,y}.
+ */
 const ProjectilePathRenderer: React.FC<Props> = ({ element }) => {
-  const { x, y } = element.position;
-  const range = element.dimensions?.width ?? 200;
-  const maxH = element.dimensions?.height ?? 80;
-
-  const pts: string[] = [];
-  const steps = 40;
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const px = x + t * range;
-    const py = y - 4 * maxH * t * (1 - t);
-    pts.push(`${px},${py}`);
+  let pts: { x: number; y: number }[] = [];
+  try {
+    pts = JSON.parse(String(element.meta?.points ?? "[]"));
+  } catch {
+    pts = [];
   }
+  if (pts.length < 2) return null;
+
+  const polyPts = pts.map((p) => `${p.x},${p.y}`).join(" ");
+  const apex = pts.reduce((min, p) => (p.y < min.y ? p : min), pts[0]);
 
   return (
     <g>
       <polyline
-        points={pts.join(" ")}
+        points={polyPts}
         fill="none"
         stroke="hsl(var(--primary))"
         strokeWidth={1.5}
-        strokeDasharray="4 3"
-        opacity={0.5}
+        strokeDasharray="5 4"
+        opacity={0.6}
       />
       {element.label && (
         <text
-          x={x + range / 2}
-          y={y - maxH - 10}
+          x={apex.x}
+          y={apex.y - 10}
           fill="hsl(var(--primary))"
           fontSize={10}
           fontFamily="JetBrains Mono"
           textAnchor="middle"
-          opacity={0.6}
+          opacity={0.75}
         >
           {element.label}
         </text>

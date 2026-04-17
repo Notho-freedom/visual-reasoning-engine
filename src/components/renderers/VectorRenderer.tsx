@@ -1,53 +1,60 @@
 import React from "react";
-import type { Force } from "@/types/cognitive";
+import type { ResolvedForce } from "@/types/cognitive";
 
 interface Props {
-  force: Force;
+  force: ResolvedForce;
   highlighted?: boolean;
 }
 
+/**
+ * Renderer "bête" — reçoit start/end déjà calculés par le layout engine.
+ */
 const VectorRenderer: React.FC<Props> = ({ force, highlighted }) => {
-  const { x: px, y: py } = force.application_point;
-  const scale = 60;
-  const len = Math.sqrt(force.direction.x ** 2 + force.direction.y ** 2);
-  const nx = len > 0 ? force.direction.x / len : 0;
-  const ny = len > 0 ? force.direction.y / len : 0;
-  const ex = px + nx * scale;
-  const ey = py + ny * scale;
+  const { x: x1, y: y1 } = force.start;
+  const { x: x2, y: y2 } = force.end;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const ux = dx / len;
+  const uy = dy / len;
 
-  const color = force.color || (highlighted ? "hsl(217, 91%, 60%)" : "hsl(0, 72%, 51%)");
+  const color = force.color;
   const markerId = `arrow-${force.id}`;
 
   return (
-    <g opacity={highlighted ? 1 : 0.7} className="transition-opacity duration-300">
+    <g
+      opacity={highlighted ? 1 : 0.85}
+      className="transition-opacity duration-300"
+    >
       <defs>
         <marker
           id={markerId}
-          markerWidth="8"
-          markerHeight="6"
+          markerWidth="9"
+          markerHeight="7"
           refX="8"
-          refY="3"
+          refY="3.5"
           orient="auto"
         >
-          <polygon points="0 0, 8 3, 0 6" fill={color} />
+          <polygon points="0 0, 9 3.5, 0 7" fill={color} />
         </marker>
       </defs>
       <line
-        x1={px}
-        y1={py}
-        x2={ex}
-        y2={ey}
+        x1={x1}
+        y1={y1}
+        x2={x2}
+        y2={y2}
         stroke={color}
-        strokeWidth={highlighted ? 2.5 : 2}
+        strokeWidth={highlighted ? 2.8 : 2}
         markerEnd={`url(#${markerId})`}
       />
       <text
-        x={ex + nx * 12}
-        y={ey + ny * 12}
+        x={x2 + ux * 14}
+        y={y2 + uy * 14}
         fill={color}
-        fontSize={11}
+        fontSize={12}
         fontFamily="JetBrains Mono"
-        fontWeight={500}
+        fontWeight={600}
         textAnchor="middle"
         dominantBaseline="central"
       >
@@ -55,13 +62,13 @@ const VectorRenderer: React.FC<Props> = ({ force, highlighted }) => {
       </text>
       {force.magnitude && (
         <text
-          x={ex + nx * 12}
-          y={ey + ny * 12 + 14}
+          x={x2 + ux * 14}
+          y={y2 + uy * 14 + 13}
           fill={color}
           fontSize={9}
           fontFamily="JetBrains Mono"
           textAnchor="middle"
-          opacity={0.7}
+          opacity={0.75}
         >
           {force.magnitude}
         </text>
