@@ -6,51 +6,47 @@
 
 @layer base {
   :root {
-    --background: 222 47% 7%;
-    --foreground: 210 20% 92%;
+    /* Deep space background */
+    --background: 222 40% 5%;
+    --foreground: 210 25% 94%;
 
-    --card: 222 40% 10%;
-    --card-foreground: 210 20% 92%;
+    --card: 222 32% 8%;
+    --card-foreground: 210 25% 94%;
 
-    --popover: 222 40% 10%;
-    --popover-foreground: 210 20% 92%;
+    --popover: 222 32% 9%;
+    --popover-foreground: 210 25% 94%;
 
     --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 222 30% 16%;
-    --secondary-foreground: 210 20% 85%;
+    --secondary: 222 25% 14%;
+    --secondary-foreground: 215 20% 78%;
 
-    --muted: 222 25% 14%;
-    --muted-foreground: 215 15% 50%;
+    --muted: 222 22% 12%;
+    --muted-foreground: 215 14% 55%;
 
-    --accent: 222 30% 18%;
-    --accent-foreground: 210 20% 92%;
+    --accent: 222 28% 16%;
+    --accent-foreground: 210 25% 94%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 222 20% 14%;
-    --input: 222 20% 14%;
+    --border: 222 18% 14%;
+    --input: 222 18% 14%;
     --ring: 217 91% 60%;
 
     --radius: 0.625rem;
 
-    --sidebar-background: 222 47% 7%;
-    --sidebar-foreground: 210 20% 85%;
+    --sidebar-background: 222 35% 6%;
+    --sidebar-foreground: 210 20% 82%;
     --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 222 30% 12%;
-    --sidebar-accent-foreground: 210 20% 85%;
-    --sidebar-border: 222 20% 14%;
+    --sidebar-accent: 222 28% 11%;
+    --sidebar-accent-foreground: 210 20% 88%;
+    --sidebar-border: 222 18% 12%;
     --sidebar-ring: 217 91% 60%;
 
-    --surface: 222 35% 12%;
-    --surface-hover: 222 30% 16%;
-    --glass: 0 0% 100%;
-    --glass-opacity: 0.05;
-    --glass-border: 0 0% 100%;
-    --glass-border-opacity: 0.08;
+    --surface: 222 30% 10%;
   }
 }
 
@@ -58,24 +54,33 @@
   * {
     @apply border-border;
   }
-
+  html, body, #root {
+    height: 100%;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
-
   code, .font-mono {
     font-family: 'JetBrains Mono', monospace;
   }
 }
 
 @layer utilities {
-  .glass-card {
-    background: hsla(var(--glass) / var(--glass-opacity));
-    border: 1px solid hsla(var(--glass-border) / var(--glass-border-opacity));
-    backdrop-filter: blur(12px);
+  .scene-frame {
+    background: linear-gradient(180deg, hsl(222 36% 7%), hsl(222 32% 5%));
+    border: 1px solid hsl(var(--border));
   }
-  .glass-card-hover {
-    background: hsla(var(--glass) / calc(var(--glass-opacity) + 0.02));
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
   }
 }

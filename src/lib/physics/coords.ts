@@ -1,15 +1,9 @@
 import type { Vec2 } from "@/types/cognitive";
 
-/**
- * Conversion repère physique (origine bas-gauche, Y-up, mètres)
- * → repère SVG (origine haut-gauche, Y-down, pixels)
- */
 export interface Viewport {
   width: number;
   height: number;
-  /** pixels par mètre */
   scale: number;
-  /** offset SVG du point physique (0,0) */
   originX: number;
   originY: number;
 }
@@ -18,8 +12,8 @@ export function makeViewport(
   width: number,
   height: number,
   scale: number,
-  originX = 60,
-  originY = height - 60
+  originX = 80,
+  originY = height - 80
 ): Viewport {
   return { width, height, scale, originX, originY };
 }
@@ -33,6 +27,10 @@ export function toSVG(p: Vec2, vp: Viewport): Vec2 {
 
 export function deg2rad(d: number): number {
   return (d * Math.PI) / 180;
+}
+
+export function rad2deg(r: number): number {
+  return (r * 180) / Math.PI;
 }
 
 export function add(a: Vec2, b: Vec2): Vec2 {
@@ -52,11 +50,22 @@ export function unit(v: Vec2): Vec2 {
   return n > 1e-9 ? { x: v.x / n, y: v.y / n } : { x: 0, y: 0 };
 }
 
-/** Échelle des vecteurs forces : px par newton */
-export const FORCE_SCALE_PX_PER_N = 2.2;
+export const FORCE_SCALE_PX_PER_N = 2.4;
 
-/** Longueur visuelle d'une force, bornée pour éviter écrans débordés */
 export function forceArrowLength(valueN: number): number {
   const raw = Math.abs(valueN) * FORCE_SCALE_PX_PER_N;
-  return Math.max(40, Math.min(110, raw));
+  return Math.max(44, Math.min(120, raw));
+}
+
+/** Construit l'élément "world_axis" — repère monde fixe en bas-gauche. */
+export function makeWorldAxis(vp: Viewport): {
+  position: Vec2;
+  size: { w: number; h: number };
+  meta: Record<string, number>;
+} {
+  return {
+    position: { x: vp.originX, y: vp.originY },
+    size: { w: 70, h: 70 },
+    meta: { scalePxPerM: vp.scale },
+  };
 }

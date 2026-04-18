@@ -1,19 +1,20 @@
-import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2 } from "@/types/cognitive";
-import { makeViewport, toSVG, deg2rad, forceArrowLength } from "../coords";
+import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
+import { makeViewport, toSVG, deg2rad, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, customForce, FORCE_COLORS } from "../forces";
 
-export function computeProjectile(spec: DiagramSpec, constants: Record<string, number>): ResolvedScene {
-  const W = 720;
-  const H = 460;
+export function computeProjectile(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
+  const W = 1000;
+  const H = 600;
   const v0 = spec.params.v0 ?? constants.v0 ?? 20;
   const thetaDeg = spec.params.theta ?? constants.theta ?? 45;
   const g = constants.g ?? 9.81;
   const t = deg2rad(thetaDeg);
   const range = (v0 * v0 * Math.sin(2 * t)) / g;
   const maxH = (v0 * v0 * Math.sin(t) ** 2) / (2 * g);
+  const tFlight = (2 * v0 * Math.sin(t)) / g;
 
-  const scalePx = Math.min((W - 140) / Math.max(range, 1), (H - 130) / Math.max(maxH, 1));
-  const vp = makeViewport(W, H, scalePx, 70, H - 70);
+  const scalePx = Math.min((W - 200) / Math.max(range + 1, 1), (H - 160) / Math.max(maxH + 1, 1));
+  const vp = makeViewport(W, H, scalePx, 90, H - 90);
 
   const elements: ResolvedElement[] = [];
 
@@ -21,23 +22,18 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
     id: "ground",
     type: "ground",
     position: toSVG({ x: -1, y: 0 }, vp),
-    end: toSVG({ x: range + 1, y: 0 }, vp),
+    end: toSVG({ x: range + 2, y: 0 }, vp),
   });
 
-  if (spec.showAxis !== false) {
-    elements.push({
-      id: "axis",
-      type: "axis",
-      position: toSVG({ x: 0, y: 0 }, vp),
-      size: { w: 60, h: 60 },
-    });
-  }
+  // Repère monde
+  const wa = makeWorldAxis(vp);
+  elements.push({ id: "world_axis", type: "world_axis", ...wa });
 
-  // Trajectoire échantillonnée (parabolique)
+  // Trajectoire complète (en arrière-plan, tracé fin)
   const trajPath: Vec2[] = [];
   const N = 60;
   for (let i = 0; i <= N; i++) {
-    const tt = (i / N) * ((2 * v0 * Math.sin(t)) / g);
+    const tt = (i / N) * tFlight;
     const x = v0 * Math.cos(t) * tt;
     const y = v0 * Math.sin(t) * tt - 0.5 * g * tt * tt;
     trajPath.push(toSVG({ x, y }, vp));
@@ -51,24 +47,44 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
     label: `R = ${range.toFixed(1)} m`,
   });
 
-  // Arc angle initial
+  // Trace progressive (jusqu'à t actuel)
+  const animT = Math.min(frame.t, tFlight);
+  if (animT > 0.02) {
+    const trail: Vec2[] = [];
+    const M = 40;
+    for (let i = 0; i <= M; i++) {
+      const tt = (i / M) * animT;
+      const x = v0 * Math.cos(t) * tt;
+      const y = v0 * Math.sin(t) * tt - 0.5 * g * tt * tt;
+      trail.push(toSVG({ x, y }, vp));
+    }
+    elements.push({
+      id: "trail",
+      type: "trail",
+      position: trail[0],
+      end: trail[trail.length - 1],
+      meta: { points: JSON.stringify(trail) },
+    });
+  }
+
   elements.push({
     id: "angle_arc",
     type: "angle_arc",
     position: toSVG({ x: 0, y: 0 }, vp),
-    meta: { angleDeg: thetaDeg, radius: 36 },
+    meta: { angleDeg: thetaDeg, radius: 40 },
     label: `θ=${thetaDeg.toFixed(0)}°`,
   });
 
   const objectCenters: Record<string, Vec2> = {};
   const forces: ResolvedForce[] = [];
 
-  // Objet au point de tir
   const obj = spec.objects[0];
   if (obj) {
     const m = obj.mass ?? constants.m ?? 1;
     const sizePx = (obj.size ?? 0.4) * vp.scale;
-    const center = toSVG({ x: 0, y: 0 }, vp);
+    const xPos = v0 * Math.cos(t) * animT;
+    const yPos = Math.max(0, v0 * Math.sin(t) * animT - 0.5 * g * animT * animT);
+    const center = toSVG({ x: xPos, y: yPos }, vp);
     objectCenters[obj.id] = center;
     elements.push({
       id: obj.id,
@@ -78,20 +94,25 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
       label: obj.label,
     });
 
-    // Vecteur v0
-    const v0Px = Math.min(110, 60 + v0 * 1.5);
-    forces.push({
-      id: "v0",
-      label: "v₀",
-      magnitude: `${v0.toFixed(1)} m/s`,
-      start: center,
-      end: { x: center.x + Math.cos(t) * v0Px, y: center.y - Math.sin(t) * v0Px },
-      color: "hsl(195, 80%, 60%)",
-      type: "applied",
-      target: obj.id,
-    });
+    // Vecteur vitesse instantanée
+    const vx = v0 * Math.cos(t);
+    const vy = v0 * Math.sin(t) - g * animT;
+    const vmag = Math.hypot(vx, vy);
+    if (vmag > 0.5 && animT < tFlight) {
+      const vpx = Math.min(110, 50 + vmag * 1.6);
+      forces.push({
+        id: "v",
+        label: "v",
+        magnitude: `${vmag.toFixed(1)} m/s`,
+        start: center,
+        end: { x: center.x + (vx / vmag) * vpx, y: center.y - (vy / vmag) * vpx },
+        color: "hsl(195 80% 60%)",
+        type: "applied",
+        target: obj.id,
+      });
+    }
 
-    // Forces (poids principalement)
+    // Forces (poids)
     spec.forces.filter((f) => f.target === obj.id).forEach((f) => {
       let vec: Vec2 = { x: 0, y: 0 };
       if (f.type === "weight") vec = weight(m, g);
@@ -112,5 +133,6 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
     });
   }
 
-  return { width: W, height: H, elements, forces, objectCenters };
+  const phaseLabel = animT >= tFlight ? "Impact" : `t = ${animT.toFixed(2)}s`;
+  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
 }

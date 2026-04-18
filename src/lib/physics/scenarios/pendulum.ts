@@ -1,17 +1,22 @@
-import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2 } from "@/types/cognitive";
-import { makeViewport, toSVG, deg2rad, forceArrowLength } from "../coords";
+import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
+import { makeViewport, toSVG, deg2rad, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, tensionAlong, FORCE_COLORS } from "../forces";
 
-export function computePendulum(spec: DiagramSpec, constants: Record<string, number>): ResolvedScene {
-  const W = 600;
-  const H = 480;
+export function computePendulum(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
+  const W = 1000;
+  const H = 620;
   const g = constants.g ?? 9.81;
   const L = spec.params.length ?? constants.L ?? 1.5;
-  const angleDeg = spec.params.angle ?? constants.theta ?? 25;
-  const a = deg2rad(angleDeg);
+  const angleDeg0 = spec.params.angle ?? constants.theta ?? 25;
+  const a0 = deg2rad(angleDeg0);
 
-  const scalePx = Math.min(120, (H - 160) / Math.max(L + 0.4, 1));
-  const vp = makeViewport(W, H, scalePx, W / 2, 80);
+  // Oscillation θ(t) = θ₀·cos(ω·t), ω = √(g/L)
+  const omega = Math.sqrt(g / L);
+  const aNow = a0 * Math.cos(omega * frame.t);
+  const angleDegNow = (aNow * 180) / Math.PI;
+
+  const scalePx = Math.min(180, (H - 200) / Math.max(L + 0.4, 1));
+  const vp = makeViewport(W, H, scalePx, W / 2, 110);
 
   const elements: ResolvedElement[] = [];
 
@@ -19,17 +24,15 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
   elements.push({
     id: "ceiling",
     type: "ground",
-    position: toSVG({ x: -1.5, y: 0 }, vp),
-    end: toSVG({ x: 1.5, y: 0 }, vp),
+    position: toSVG({ x: -2, y: 0 }, vp),
+    end: toSVG({ x: 2, y: 0 }, vp),
   });
 
   const pivot = toSVG({ x: 0, y: 0 }, vp);
-
-  // Position de la masse (angle depuis la verticale)
-  const massPhys = { x: L * Math.sin(a), y: -L * Math.cos(a) };
+  const massPhys = { x: L * Math.sin(aNow), y: -L * Math.cos(aNow) };
   const center = toSVG(massPhys, vp);
 
-  // Corde / tige
+  // Tige
   elements.push({
     id: "arm",
     type: "pendulum_arm",
@@ -38,7 +41,7 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
     label: `L = ${L.toFixed(2)} m`,
   });
 
-  // Verticale de référence (pointillée)
+  // Verticale de référence
   elements.push({
     id: "vertical_ref",
     type: "rope",
@@ -47,18 +50,20 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
     meta: { dashed: true },
   });
 
-  // Arc d'angle
-  elements.push({
-    id: "angle_arc",
-    type: "angle_arc",
-    position: pivot,
-    meta: { angleDeg, radius: 40, fromVertical: true },
-    label: `θ=${angleDeg.toFixed(0)}°`,
-  });
+  // Arc d'angle (depuis verticale)
+  if (Math.abs(angleDegNow) > 1) {
+    elements.push({
+      id: "angle_arc",
+      type: "angle_arc",
+      position: pivot,
+      meta: { angleDeg: Math.abs(angleDegNow), radius: 45, fromVertical: true },
+      label: `θ=${angleDegNow.toFixed(0)}°`,
+    });
+  }
 
   const obj = spec.objects[0];
   const m = obj?.mass ?? constants.m ?? 1;
-  const sizeM = obj?.size ?? 0.25;
+  const sizeM = obj?.size ?? 0.28;
   const sizePx = sizeM * vp.scale;
   const objId = obj?.id ?? "mass";
 
@@ -70,6 +75,19 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
     label: obj?.label,
   });
 
+  // Repère MONDE
+  const wa = makeWorldAxis(vp);
+  elements.push({ id: "world_axis", type: "world_axis", ...wa });
+
+  // Repère LOCAL : tangentiel (perpendiculaire à la corde) + radial
+  // Rotation du repère local : axes tournés de l'angle aNow (rad)
+  elements.push({
+    id: "local_axis",
+    type: "local_axis",
+    position: center,
+    meta: { rotationDeg: -angleDegNow, length: 38, labelX: "t", labelY: "n" },
+  });
+
   const objectCenters: Record<string, Vec2> = { [objId]: center };
   const forces: ResolvedForce[] = [];
 
@@ -77,8 +95,7 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
     let vec: Vec2 = { x: 0, y: 0 };
     if (f.type === "weight") vec = weight(m, g);
     else if (f.type === "tension") {
-      // Tension le long de la tige, vers le pivot
-      const T = f.value ?? m * g * Math.cos(a);
+      const T = m * g * Math.cos(aNow) + (m * L * omega * omega * a0 * a0 * Math.sin(omega * frame.t) ** 2);
       vec = tensionAlong(T, massPhys, { x: 0, y: 0 });
     }
     const mag = Math.hypot(vec.x, vec.y);
@@ -96,5 +113,6 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
     });
   });
 
-  return { width: W, height: H, elements, forces, objectCenters };
+  const phaseLabel = `θ=${angleDegNow.toFixed(1)}°  T=${((2 * Math.PI) / omega).toFixed(2)}s`;
+  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
 }

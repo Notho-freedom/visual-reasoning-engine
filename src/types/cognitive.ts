@@ -32,42 +32,35 @@ export interface SemanticObject {
   id: string;
   type: "block" | "ball" | "particle" | "mass";
   label?: string;
-  /** masse en kg */
   mass?: number;
-  /** id d'ancrage : "ground" | "slope" | "rope_left" | "rope_right" | "spring" | "pivot" */
   anchor?: string;
-  /** distance le long de l'ancrage (ex: distance le long du plan incliné) */
   distance?: number;
-  /** taille visuelle en mètres (côté du carré) */
   size?: number;
-  /** position absolue en mètres (mode generic / projectile) */
   position?: Vec2;
 }
 
 export interface SemanticForce {
   id: string;
-  target: string; // id de l'objet
+  target: string;
   type: ForceType;
   label: string;
-  /** expression symbolique (mg, N, T, f, F, kx...) */
   magnitude?: string;
-  /** valeur numérique optionnelle (en N) — sinon calculée par le moteur */
   value?: number;
-  /** direction explicite pour forces custom (vecteur unitaire physique, Y-up) */
   direction?: Vec2;
-  /** orientation pour frottement: "up_slope" | "down_slope" */
   orientation?: string;
   color?: string;
+  /** appliquée seulement pendant une phase d'animation: "pre" | "post" | "always" */
+  phase?: "pre" | "post" | "always";
 }
 
 export interface DiagramSpec {
   scenario: ScenarioType;
-  /** paramètres physiques: angle (deg), length (m), height (m), v0, theta, x (compression), L, etc. */
   params: Record<string, number>;
   objects: SemanticObject[];
   forces: SemanticForce[];
-  /** afficher repère xy */
   showAxis?: boolean;
+  /** durée totale animation (s), autoplay */
+  animation?: { duration?: number; autoplay?: boolean };
 }
 
 // ===== TIMELINE =====
@@ -101,7 +94,18 @@ export interface CognitiveJSON {
   timeline: TimelineStep[];
 }
 
-// ===== OUTPUT RÉSOLU (ce que reçoit le renderer, en pixels SVG) =====
+// ===== ANIMATION =====
+
+export interface AnimationFrame {
+  /** temps absolu en secondes */
+  t: number;
+  /** durée totale en secondes */
+  duration: number;
+  /** progression 0..1 */
+  progress: number;
+}
+
+// ===== OUTPUT RÉSOLU =====
 
 export interface ResolvedElement {
   id: string;
@@ -115,15 +119,15 @@ export interface ResolvedElement {
     | "rope"
     | "pulley"
     | "axis"
+    | "world_axis"
+    | "local_axis"
     | "projectile_path"
     | "pendulum_arm"
     | "angle_arc"
-    | "dimension";
-  /** coords SVG (px, Y-down) */
+    | "dimension"
+    | "trail";
   position: Vec2;
-  /** point cible (pour ligne, corde, axe...) */
   end?: Vec2;
-  /** taille en pixels */
   size?: { w: number; h: number };
   rotationDeg?: number;
   label?: string;
@@ -134,12 +138,13 @@ export interface ResolvedForce {
   id: string;
   label: string;
   magnitude?: string;
-  /** start/end en coords SVG (px) */
   start: Vec2;
   end: Vec2;
   color: string;
   type: ForceType;
   target: string;
+  /** force visuellement atténuée (hors phase) */
+  faded?: boolean;
 }
 
 export interface ResolvedScene {
@@ -147,6 +152,9 @@ export interface ResolvedScene {
   height: number;
   elements: ResolvedElement[];
   forces: ResolvedForce[];
-  /** map id objet -> centre SVG (utile aux highlights) */
   objectCenters: Record<string, Vec2>;
+  /** durée naturelle de l'animation pour ce scénario (s) */
+  duration?: number;
+  /** message d'animation (ex: "Phase de compression") */
+  phaseLabel?: string;
 }
