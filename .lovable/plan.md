@@ -1,127 +1,120 @@
 
 
-## Diagnostic
+## Analyse
 
-L'utilisateur a raison : actuellement le pipeline est `JSON → SVG direct`. L'IA place des coordonnées approximatives (`position: {x: 200, y: 300}`), les forces sont attachées visuellement et non calculées. Résultat : ça ressemble à de la physique, mais ce n'est pas géométriquement exact.
+L'utilisateur veut 3 chantiers majeurs :
 
-## Solution : Physics Layout Engine
+1. **Repères corrects** : repère application (global, fixe en bas-gauche) + repère système (lié à chaque solide, projections des forces)
+2. **Animations physiques réelles** : chaque scénario joue son mouvement naturel (chute, glissement, compression/relâchement, oscillation, rotation poulie) avec play/pause/scrubber
+3. **Refonte design** : layout grand écran centré sur le schéma (priorité 1), calculs/explications (priorité 2), énoncé (priorité 3)
 
-Insérer une couche de calcul entre le JSON brut et le rendu SVG :
+## Exploration nécessaire
 
-```text
-JSON (sémantique) → computeLayout() → JSON (résolu) → Renderer (bête)
+J'ai déjà le contexte sur layoutEngine, scenarios, renderers, types. Pas besoin de relire, je connais l'architecture.
+
+## 1. Animation Engine (le cœur du sprint)
+
+**Nouveau module** `src/lib/physics/animation.ts` :
+- `AnimationState` : `{ t: number, playing: boolean, duration: number, speed: number }`
+- Une fonction `getAnimatedState(scenario, params, t)` retourne pour chaque scénario les positions/forces à l'instant `t`
+
+**Par scénario, équations du mouvement** :
+- **free_fall** : `y(t) = h - ½g·t²`, t_max quand y=0. Force poids visible tout du long.
+- **projectile** : `x(t) = v₀cos(θ)·t`, `y(t) = v₀sin(θ)·t - ½g·t²`. Trace progressive.
+- **inclined_plane** : `s(t) = ½·a·t²` avec `a = g(sin α - μcos α)`. Bloc glisse le long. Forces réorientées selon direction du mouvement (frottement opposé au déplacement).
+- **spring** : phase 1 (compression linéaire 0→x_max sous force F_appliquée), phase 2 (oscillation `x(t) = x_max·cos(ω·t)` avec `ω = √(k/m)`). Force ressort = -k·x change de sens.
+- **pendulum** : `θ(t) = θ₀·cos(ω·t)` avec `ω = √(g/L)`. Tension toujours le long de la corde, poids vertical, projections affichées.
+- **pulley** : 2 blocs, accélération `a = (m₁-m₂)g/(m₁+m₂)`. Un monte, l'autre descend, corde s'allonge/raccourcit symétriquement.
+- **horizontal_motion** : translation `x(t) = ½a·t²` ou `x(t) = v₀·t`.
+
+**Intégration** : `computeLayout(data, animState)` accepte un état d'animation optionnel et passe `t` au solveur. Les solveurs réutilisent leur logique géométrique mais avec des positions/forces dépendantes de `t`.
+
+## 2. Repères (axes)
+
+**Repère application** (global) :
+- Toujours visible en bas-gauche du SVG, fixe
+- Flèches X (droite) + Y (haut), labels, échelle (1m)
+- Composant `WorldAxisRenderer` distinct
+
+**Repère système** (local à un objet) :
+- Pour plan incliné : axes tournés selon l'angle (x' parallèle à la pente, y' perpendiculaire)
+- Pour pendule : axes tangentiel/normal au mouvement
+- Pour ressort : axe selon direction du ressort
+- Affiché au centre du solide concerné, plus petit, couleur distincte
+- Composant `LocalAxisRenderer` qui prend `{ origin, rotationDeg, label }`
+- Lors d'une étape qui parle de projection, on highlight le repère local + on dessine les composantes projetées des forces (pointillés)
+
+## 3. Animation Player (UI)
+
+Nouveau composant `AnimationPlayer.tsx` :
+- Bouton Play/Pause (Lucide `Play`/`Pause`)
+- Bouton Reset
+- Slider de scrubbing temporel (0 → t_max)
+- Affichage `t = X.XX s`
+- Contrôle vitesse (0.25x, 0.5x, 1x, 2x)
+- Le play utilise `requestAnimationFrame` côté React, met à jour `t` qui re-trigger `computeLayout`
+
+## 4. Refonte design — Layout grand écran
+
+**Nouveau layout** dans `Index.tsx` :
+```
+┌─────────────────────────────────────────────────────┐
+│  Header minimal (32px) — logo + meta exercice       │
+├──────────┬──────────────────────────────┬───────────┤
+│          │                              │           │
+│ Énoncé   │      SCHÉMA + ANIMATION      │  Étapes   │
+│ (240px)  │      (FLEX-1, ÉNORME)        │  (300px)  │
+│ collap-  │      max-h: 70vh             │  scroll   │
+│ sable    │                              │           │
+│          │  ─────────────────────       │           │
+│          │  Player (play/pause/seek)    │           │
+│          │  ─────────────────────       │           │
+│          │  Sliders constantes (inline) │           │
+│          │                              │           │
+└──────────┴──────────────────────────────┴───────────┘
 ```
 
-L'IA décrit la **scène en termes physiques** (angle, distance, masse), pas en pixels. Le moteur de layout calcule les positions exactes, les vecteurs réels, et passe au renderer un JSON où tout est déjà en coordonnées correctes.
+- Le schéma occupe ~60% de l'écran, viewBox élargi (1200x680 au lieu de 700x380)
+- Énoncé devient une sidebar gauche escamotable (icône burger pour ouvrir/fermer)
+- Étapes restent à droite, mais design plus compact
+- Player + sliders sous le schéma, pas dans une carte séparée
 
----
+**Polish design** :
+- Background `#0A0E1A` (plus profond, moins bleuté)
+- Carte schéma : `bg-[#0F1420]` border `#1E2536`, coins `rounded-xl`
+- Accent : garder bleu `#3B82F6` mais ajouter un secondaire `#A78BFA` (violet doux) pour les forces de réaction et axes locaux
+- Forces : couleurs distinctes et saturées (poids=ambre, normale=cyan, frottement=rose, tension=vert, ressort=violet)
+- Labels avec petits backgrounds pill `bg-black/40 px-1.5 rounded-sm` pour lisibilité
+- Police schéma : Inter 12px pour labels, JetBrains Mono 11px pour formules/valeurs
+- Suppression du `glass-card` partout (devient `bg-card border`)
 
-## 1. Nouveau format JSON sémantique
-
-L'IA ne donne plus `position: {x: 250, y: 400}` mais une description physique :
-
-```json
-{
-  "diagram": {
-    "scenario": "inclined_plane",
-    "params": { "angle": 30, "length": 4, "blockSize": 0.5 },
-    "objects": [
-      { "id": "block", "type": "block", "anchor": "slope", "distance": 2, "mass": 5 }
-    ],
-    "forces": [
-      { "id": "P", "target": "block", "type": "weight", "magnitude": "mg" },
-      { "id": "N", "target": "block", "type": "normal", "magnitude": "N" },
-      { "id": "f", "target": "block", "type": "friction", "magnitude": "f", "direction": "up_slope" }
-    ]
-  }
-}
-```
-
-Plus de coordonnées pixel dans le JSON IA. Que de la physique.
-
-## 2. Module `src/lib/physics/layoutEngine.ts`
-
-Cœur du système. Pour chaque scénario, une fonction de résolution :
-
-- `computeInclinedPlane(params)` → calcule positions du sol, de la pente, du bloc (`x = d·cos(α), y = d·sin(α)`), point d'application des forces (centre du bloc).
-- `computeFreeFall(params)` → position verticale, vecteur poids depuis le centre.
-- `computePulley(params)` → position de la poulie, des deux blocs, tension le long des cordes.
-- `computeProjectile(params)` → trajectoire paramétrée, position de tir.
-- `computeSpring(params)` → ancrage mur + position bloc selon compression.
-- `computePendulum(params)` → pivot + position masse selon angle.
-- `computeCircuit(params)` → placement automatique des composants en boucle.
-
-Chaque fonction retourne :
-```ts
-{
-  elements: DiagramElement[],   // avec positions PIXEL exactes
-  forces: ResolvedForce[],      // avec start/end calculés
-  bounds: { width, height }
-}
-```
-
-## 3. Système de coordonnées
-
-- **Repère physique** : origine en bas-gauche, y vers le haut, unités en mètres.
-- **Repère SVG** : origine en haut-gauche, y vers le bas, unités en pixels.
-- Fonction `toSVG(point, scale, viewport)` qui fait la conversion à la toute fin.
-- Échelle vectorielle dédiée pour les forces (`forceScale = 30 px/N`) pour éviter les flèches géantes avec g=9.81.
-
-## 4. Calcul vectoriel des forces
-
-Dans `src/lib/physics/forces.ts`, fonctions pures :
-
-```ts
-weight(mass, g) → { x: 0, y: -mass*g }
-normal(mass, g, angle) → { x: -sin(α)*N, y: cos(α)*N }
-friction(N, μ, angle, direction) → vecteur le long du plan
-tension(magnitude, ropeAngle) → vecteur le long de la corde
-```
-
-Toutes les forces partent du **centre de masse réel** de l'objet, calculé par le layout engine.
-
-## 5. Renderer "bête"
-
-`SceneRenderer` et tous les renderers individuels deviennent passifs : ils reçoivent des coordonnées déjà calculées et dessinent. Aucune logique géométrique côté rendu.
-
-`VectorRenderer` reçoit `{ start: {x,y}, end: {x,y}, label }` directement — fini le calcul de direction normalisée dans le renderer.
-
-## 6. Mise à jour de l'edge function
-
-Le prompt IA est simplifié : on lui demande de décrire la scène en **paramètres physiques** (`scenario`, `angle`, `mass`, `length`), pas en coordonnées. Le tool schema reflète ce nouveau format.
-
-L'IA produit moins de données, plus sémantiques → moins d'erreurs de placement.
-
-## 7. Pipeline dans `Index.tsx`
-
-```ts
-const aiResult = await parseExercise(text);
-const resolvedScene = computeLayout(aiResult);  // ← nouvelle étape
-setData({ ...aiResult, diagram: resolvedScene });
-```
-
-## 8. Constraint system (bonus, scope V2.1)
-
-Pour rester dans les clous de cette itération, on implémente seulement les contraintes implicites dans chaque solveur de scénario (bloc collé au plan, masse au bout de la corde). Un vrai système de contraintes générique vient après.
-
----
-
-## Fichiers impactés
+## 5. Fichiers impactés
 
 | Fichier | Action |
 |---|---|
-| `src/lib/physics/layoutEngine.ts` | NOUVEAU — dispatcher de scénarios |
-| `src/lib/physics/scenarios/*.ts` | NOUVEAU — un solveur par type (incliné, poulie, projectile, ressort, pendule, chute, circuit) |
-| `src/lib/physics/forces.ts` | NOUVEAU — calcul vectoriel des forces |
-| `src/lib/physics/coords.ts` | NOUVEAU — conversion repère physique ↔ SVG |
-| `src/types/cognitive.ts` | Ajout `ResolvedForce`, `DiagramSpec` (input sémantique) |
-| `supabase/functions/parse-exercise/index.ts` | Prompt + schema sémantique |
-| `src/pages/Index.tsx` | Appel `computeLayout()` après parsing |
-| `src/components/SceneRenderer.tsx` | Devient passif |
-| `src/components/renderers/VectorRenderer.tsx` | Reçoit start/end précalculés |
+| `src/lib/physics/animation.ts` | NOUVEAU — moteur temporel par scénario |
+| `src/lib/physics/scenarios/*.ts` | MODIFIÉ — accepter `t` et calculer positions animées + forces dynamiques |
+| `src/lib/physics/layoutEngine.ts` | MODIFIÉ — signature `computeLayout(data, t?)` |
+| `src/components/AnimationPlayer.tsx` | NOUVEAU — Play/Pause/Seek/Speed |
+| `src/components/renderers/WorldAxisRenderer.tsx` | NOUVEAU — repère global fixe |
+| `src/components/renderers/LocalAxisRenderer.tsx` | NOUVEAU — repère lié à un solide |
+| `src/components/SceneRenderer.tsx` | MODIFIÉ — toujours afficher repère monde + repères locaux des solides |
+| `src/components/ExerciseInput.tsx` | MODIFIÉ — devient compact (sidebar collapsable) |
+| `src/components/ControlsPanel.tsx` | MODIFIÉ — sliders inline plus compacts, sans le bloc steps |
+| `src/components/StepsPanel.tsx` | MODIFIÉ — design plus compact, mise en avant formule |
+| `src/pages/Index.tsx` | REFONTE — nouveau layout 3 colonnes grand écran |
+| `src/index.css` | MODIFIÉ — palette ajustée, suppression glass |
+| `tailwind.config.ts` | MODIFIÉ — couleurs forces, secondary violet |
+| `src/types/cognitive.ts` | MODIFIÉ — ajout `animation?: { duration, autoplay }` dans `DiagramSpec` |
 
-## Scope itération
+## 6. Hors scope (V2.2 plus tard)
 
-**Mécanique d'abord** : chute libre, plan incliné, poulie, projectile, ressort, pendule. Solveurs exacts pour chacun.
-**Électricité après** : layout automatique de circuits (placement en grille).
+- OCR image (déjà reporté)
+- Circuits électriques animés
+- Mode "hypothèse" (changer paramètres et comparer)
+- Synchronisation timeline ↔ animation (un step déclenche un sous-segment animé)
+
+## Scope cette itération
+
+Animation physique réelle pour les 7 scénarios mécaniques + repères corrects (monde + local) + refonte layout grand écran centré sur le schéma.
 
