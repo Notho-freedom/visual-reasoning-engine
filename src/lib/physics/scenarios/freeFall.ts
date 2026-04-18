@@ -1,15 +1,15 @@
-import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2 } from "@/types/cognitive";
-import { makeViewport, toSVG, forceArrowLength } from "../coords";
+import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
+import { makeViewport, toSVG, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, customForce, FORCE_COLORS } from "../forces";
 
-export function computeFreeFall(spec: DiagramSpec, constants: Record<string, number>): ResolvedScene {
-  const W = 600;
-  const H = 480;
+export function computeFreeFall(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
+  const W = 1000;
+  const H = 620;
   const h = spec.params.height ?? constants.h ?? 10;
   const g = constants.g ?? 9.81;
 
-  const scalePx = Math.min((H - 140) / Math.max(h, 1), 40);
-  const vp = makeViewport(W, H, scalePx, W / 2, H - 70);
+  const scalePx = Math.min((H - 160) / Math.max(h, 1), 50);
+  const vp = makeViewport(W, H, scalePx, W / 2, H - 80);
 
   const elements: ResolvedElement[] = [];
 
@@ -17,79 +17,95 @@ export function computeFreeFall(spec: DiagramSpec, constants: Record<string, num
   elements.push({
     id: "ground",
     type: "ground",
-    position: toSVG({ x: -5, y: 0 }, vp),
-    end: toSVG({ x: 5, y: 0 }, vp),
+    position: toSVG({ x: -8, y: 0 }, vp),
+    end: toSVG({ x: 8, y: 0 }, vp),
   });
 
-  // Axes
-  if (spec.showAxis !== false) {
-    elements.push({
-      id: "axis",
-      type: "axis",
-      position: toSVG({ x: -3.5, y: 0.5 }, vp),
-      size: { w: 60, h: 80 },
-    });
-  }
+  // Repère monde
+  const wa = makeWorldAxis(vp);
+  elements.push({ id: "world_axis", type: "world_axis", ...wa });
 
   // Cote hauteur
   elements.push({
     id: "h_dim",
     type: "dimension",
-    position: toSVG({ x: 1.5, y: 0 }, vp),
-    end: toSVG({ x: 1.5, y: h }, vp),
+    position: toSVG({ x: 1.8, y: 0 }, vp),
+    end: toSVG({ x: 1.8, y: h }, vp),
     label: `h = ${h.toFixed(1)} m`,
   });
+
+  // Position animée
+  // y(t) = h - 0.5*g*t² (clampé à 0)
+  const yPos = Math.max(0, h - 0.5 * g * frame.t * frame.t);
+  const v = Math.min(g * frame.t, Math.sqrt(2 * g * h));
 
   const objectCenters: Record<string, Vec2> = {};
   const forces: ResolvedForce[] = [];
 
-  spec.objects.forEach((obj, i) => {
-    const m = obj.mass ?? constants.m ?? 1;
-    const sizeM = obj.size ?? 0.5;
-    const sizePx = sizeM * vp.scale;
+  const obj = spec.objects[0];
+  const m = obj?.mass ?? constants.m ?? 1;
+  const sizeM = obj?.size ?? 0.5;
+  const sizePx = sizeM * vp.scale;
+  const objId = obj?.id ?? "object";
 
-    // Position : par défaut au sommet, sinon position absolue
-    const yPhys = obj.position?.y ?? h - i * 0.5;
-    const xPhys = obj.position?.x ?? 0;
-    const center = toSVG({ x: xPhys, y: yPhys }, vp);
-    objectCenters[obj.id] = center;
+  const center = toSVG({ x: 0, y: yPos + sizeM / 2 }, vp);
+  objectCenters[objId] = center;
 
+  // Trail (trace)
+  if (frame.t > 0.05) {
+    const N = 20;
+    const points: Vec2[] = [];
+    for (let i = 0; i <= N; i++) {
+      const tt = (i / N) * frame.t;
+      const yy = Math.max(0, h - 0.5 * g * tt * tt);
+      points.push(toSVG({ x: 0, y: yy + sizeM / 2 }, vp));
+    }
     elements.push({
-      id: obj.id,
-      type: obj.type === "block" ? "block" : "ball",
-      position: center,
-      size: { w: sizePx, h: sizePx },
-      label: obj.label,
-      meta: { mass: m },
+      id: "trail",
+      type: "trail",
+      position: points[0],
+      end: points[points.length - 1],
+      meta: { points: JSON.stringify(points) },
     });
+  }
 
-    spec.forces
-      .filter((f) => f.target === obj.id)
-      .forEach((f) => {
-        let vec: Vec2 = { x: 0, y: 0 };
-        if (f.type === "weight") vec = weight(m, g);
-        else if (f.direction) vec = customForce(f.direction, f.value ?? m * g);
-
-        const mag = Math.hypot(vec.x, vec.y);
-        if (mag < 1e-6) return;
-        const arrowPx = forceArrowLength(mag);
-        const end: Vec2 = {
-          x: center.x + (vec.x / mag) * arrowPx,
-          y: center.y - (vec.y / mag) * arrowPx,
-        };
-
-        forces.push({
-          id: f.id,
-          label: f.label,
-          magnitude: f.magnitude,
-          start: center,
-          end,
-          color: f.color ?? FORCE_COLORS[f.type] ?? FORCE_COLORS.custom,
-          type: f.type,
-          target: f.target,
-        });
-      });
+  elements.push({
+    id: objId,
+    type: obj?.type === "block" ? "block" : "ball",
+    position: center,
+    size: { w: sizePx, h: sizePx },
+    label: obj?.label,
+    meta: { mass: m },
   });
 
-  return { width: W, height: H, elements, forces, objectCenters };
+  // Repère local au centre de la masse
+  elements.push({
+    id: "local_axis",
+    type: "local_axis",
+    position: center,
+    meta: { rotationDeg: 0, length: 28 },
+  });
+
+  // Forces (poids visible tout le temps)
+  spec.forces.filter((f) => f.target === objId).forEach((f) => {
+    let vec: Vec2 = { x: 0, y: 0 };
+    if (f.type === "weight") vec = weight(m, g);
+    else if (f.direction) vec = customForce(f.direction, f.value ?? m * g);
+    const mag = Math.hypot(vec.x, vec.y);
+    if (mag < 1e-6) return;
+    const ap = forceArrowLength(mag);
+    forces.push({
+      id: f.id,
+      label: f.label,
+      magnitude: f.magnitude,
+      start: center,
+      end: { x: center.x + (vec.x / mag) * ap, y: center.y - (vec.y / mag) * ap },
+      color: f.color ?? FORCE_COLORS[f.type] ?? FORCE_COLORS.custom,
+      type: f.type,
+      target: f.target,
+    });
+  });
+
+  const phaseLabel = yPos <= 0.001 ? "Impact" : `v = ${v.toFixed(2)} m/s`;
+  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
 }
