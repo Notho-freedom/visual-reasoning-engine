@@ -21,9 +21,6 @@ const typeIcons: Record<string, React.ReactNode> = {
 const StepsPanel: React.FC<StepsPanelProps> = ({ steps, currentStep, onStepClick }) => {
   return (
     <div className="space-y-1">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1 mb-3">
-        Résolution
-      </h3>
       {steps.map((step, i) => {
         const isActive = i === currentStep;
         const isPast = i < currentStep;
