@@ -1,120 +1,122 @@
 
 
-## Analyse
+## Diagnostic des problèmes signalés
 
-L'utilisateur veut 3 chantiers majeurs :
+1. **Repère global qui "bouge"** : `makeWorldAxis(vp)` utilise `vp.originX/originY` qui change par scénario → le repère se déplace selon où le solveur place son origine physique. Il faut un repère monde **fixe** en bas-gauche du canvas (ex. `x=30, y=H-30`), indépendant du viewport.
 
-1. **Repères corrects** : repère application (global, fixe en bas-gauche) + repère système (lié à chaque solide, projections des forces)
-2. **Animations physiques réelles** : chaque scénario joue son mouvement naturel (chute, glissement, compression/relâchement, oscillation, rotation poulie) avec play/pause/scrubber
-3. **Refonte design** : layout grand écran centré sur le schéma (priorité 1), calculs/explications (priorité 2), énoncé (priorité 3)
+2. **Plan incliné — le bloc "monte" puis retombe** : dans `inclinedPlane.ts`, `dStart` vient de `obj.distance` (donné par l'IA, souvent 2.5) mais `sParcouru = ½·a·t²` peut dépasser largement → `dRestant = max(0, ...)` fait sauter le bloc à 0 brutalement. Pire : la durée par défaut est calculée pour `L=5` alors que `dStart=2.5` → le bloc atteint le bas bien avant la fin de l'animation et reste figé. Il faut **caler la durée sur `dStart` réel** et clamper proprement.
 
-## Exploration nécessaire
+3. **Ressort — le bloc ne touche pas le sol** : dans `computeSpring`, le bloc est centré sur `y=0` mais le sol est à `y=-0.5`. Le bloc flotte de 0.5m au-dessus. Il faut **placer le centre du bloc à `y = sizeM/2`** (pour que sa face inférieure touche le sol à `y=0`) et placer le sol à `y=0`.
 
-J'ai déjà le contexte sur layoutEngine, scenarios, renderers, types. Pas besoin de relire, je connais l'architecture.
+4. **Systèmes combinés non compris** : le prompt IA n'a aucun exemple de "plan incliné + poulie + masse suspendue" ni de scénario `combined`. L'IA tombe forcément sur `inclined_plane` ou `pulley` seul. Il faut introduire un nouveau scénario `inclined_pulley` (et un solveur dédié) + l'enseigner explicitement à l'IA avec l'énoncé exact donné en exemple.
 
-## 1. Animation Engine (le cœur du sprint)
+5. **Sync timeline ↔ animation** : aucun champ temporel sur les `TimelineStep`. Il faut ajouter `t_anchor?: number` (ou `t_ratio?: 0..1`) → clic sur étape = saute à `t`, et inversement l'étape active suit `t` courant.
 
-**Nouveau module** `src/lib/physics/animation.ts` :
-- `AnimationState` : `{ t: number, playing: boolean, duration: number, speed: number }`
-- Une fonction `getAnimatedState(scenario, params, t)` retourne pour chaque scénario les positions/forces à l'instant `t`
+6. **Décomposition projetée des forces** : sur étape de type `projection` (nouveau) ou si `step.type === "equation"` avec axe local visible → dessiner pour chaque force highlighted ses composantes Px'/Py' en pointillés sur le repère local.
 
-**Par scénario, équations du mouvement** :
-- **free_fall** : `y(t) = h - ½g·t²`, t_max quand y=0. Force poids visible tout du long.
-- **projectile** : `x(t) = v₀cos(θ)·t`, `y(t) = v₀sin(θ)·t - ½g·t²`. Trace progressive.
-- **inclined_plane** : `s(t) = ½·a·t²` avec `a = g(sin α - μcos α)`. Bloc glisse le long. Forces réorientées selon direction du mouvement (frottement opposé au déplacement).
-- **spring** : phase 1 (compression linéaire 0→x_max sous force F_appliquée), phase 2 (oscillation `x(t) = x_max·cos(ω·t)` avec `ω = √(k/m)`). Force ressort = -k·x change de sens.
-- **pendulum** : `θ(t) = θ₀·cos(ω·t)` avec `ω = √(g/L)`. Tension toujours le long de la corde, poids vertical, projections affichées.
-- **pulley** : 2 blocs, accélération `a = (m₁-m₂)g/(m₁+m₂)`. Un monte, l'autre descend, corde s'allonge/raccourcit symétriquement.
-- **horizontal_motion** : translation `x(t) = ½a·t²` ou `x(t) = v₀·t`.
+7. **Circuits électriques** : nouveau scénario `circuit` avec layout en boucle rectangulaire (générateur, R, C, fils) + animation de points lumineux qui circulent.
 
-**Intégration** : `computeLayout(data, animState)` accepte un état d'animation optionnel et passe `t` au solveur. Les solveurs réutilisent leur logique géométrique mais avec des positions/forces dépendantes de `t`.
+---
 
-## 2. Repères (axes)
+## Plan d'implémentation
 
-**Repère application** (global) :
-- Toujours visible en bas-gauche du SVG, fixe
-- Flèches X (droite) + Y (haut), labels, échelle (1m)
-- Composant `WorldAxisRenderer` distinct
+### A. Corrections critiques (priorité 1)
 
-**Repère système** (local à un objet) :
-- Pour plan incliné : axes tournés selon l'angle (x' parallèle à la pente, y' perpendiculaire)
-- Pour pendule : axes tangentiel/normal au mouvement
-- Pour ressort : axe selon direction du ressort
-- Affiché au centre du solide concerné, plus petit, couleur distincte
-- Composant `LocalAxisRenderer` qui prend `{ origin, rotationDeg, label }`
-- Lors d'une étape qui parle de projection, on highlight le repère local + on dessine les composantes projetées des forces (pointillés)
+**A1. Repère monde vraiment fixe**
+- `makeWorldAxis` : ignore `vp.originX/originY`. Utilise `{ x: 30, y: H - 30 }` (constante canvas).
+- Ajouter `width/height` du canvas au paramètre. Le repère monde est toujours en bas-gauche du **SVG**, pas du repère physique.
 
-## 3. Animation Player (UI)
+**A2. Plan incliné — animation correcte**
+- Recaler `dStart` à `slopeLen - 0.5` systématiquement (ignorer ou saturer `obj.distance`).
+- Forcer la durée animation : `duration = sqrt(2·dStart/a)` exactement.
+- Clamper `dRestant` entre `[0.3, dStart]` pour ne jamais sortir.
 
-Nouveau composant `AnimationPlayer.tsx` :
-- Bouton Play/Pause (Lucide `Play`/`Pause`)
-- Bouton Reset
-- Slider de scrubbing temporel (0 → t_max)
-- Affichage `t = X.XX s`
-- Contrôle vitesse (0.25x, 0.5x, 1x, 2x)
-- Le play utilise `requestAnimationFrame` côté React, met à jour `t` qui re-trigger `computeLayout`
+**A3. Ressort — bloc collé au sol**
+- Sol à `y=0`, centre du bloc à `y = sizeM/2`. Le ressort va du mur au bord gauche du bloc, à hauteur `y = sizeM/2`.
+- Idem pour `horizontal_motion` : vérifier que le bloc touche le sol.
 
-## 4. Refonte design — Layout grand écran
+### B. Systèmes combinés (priorité 1)
 
-**Nouveau layout** dans `Index.tsx` :
-```
-┌─────────────────────────────────────────────────────┐
-│  Header minimal (32px) — logo + meta exercice       │
-├──────────┬──────────────────────────────┬───────────┤
-│          │                              │           │
-│ Énoncé   │      SCHÉMA + ANIMATION      │  Étapes   │
-│ (240px)  │      (FLEX-1, ÉNORME)        │  (300px)  │
-│ collap-  │      max-h: 70vh             │  scroll   │
-│ sable    │                              │           │
-│          │  ─────────────────────       │           │
-│          │  Player (play/pause/seek)    │           │
-│          │  ─────────────────────       │           │
-│          │  Sliders constantes (inline) │           │
-│          │                              │           │
-└──────────┴──────────────────────────────┴───────────┘
-```
+**B1. Nouveau scénario `inclined_pulley`**
+- Solveur `src/lib/physics/scenarios/inclinedPulley.ts` qui dessine :
+  - Plan incliné à gauche avec bloc m₁ dessus
+  - Poulie au sommet du plan
+  - Corde du bloc → poulie → masse m₂ pendue verticalement à droite
+- Calcul correct : `a = (m₂g - m₁g·sinα - μ·m₁g·cosα) / (m₁+m₂)` (signé selon sens du mouvement)
+- Animation : m₁ glisse sur la pente, m₂ monte/descend en synchro, corde reste de longueur constante
+- Forces sur m₁ : P, N, T, f (frottement opposé au sens réel du mouvement)
+- Forces sur m₂ : P, T
 
-- Le schéma occupe ~60% de l'écran, viewBox élargi (1200x680 au lieu de 700x380)
-- Énoncé devient une sidebar gauche escamotable (icône burger pour ouvrir/fermer)
-- Étapes restent à droite, mais design plus compact
-- Player + sliders sous le schéma, pas dans une carte séparée
+**B2. Ajouter au type `ScenarioType`** : `"inclined_pulley"`.
 
-**Polish design** :
-- Background `#0A0E1A` (plus profond, moins bleuté)
-- Carte schéma : `bg-[#0F1420]` border `#1E2536`, coins `rounded-xl`
-- Accent : garder bleu `#3B82F6` mais ajouter un secondaire `#A78BFA` (violet doux) pour les forces de réaction et axes locaux
-- Forces : couleurs distinctes et saturées (poids=ambre, normale=cyan, frottement=rose, tension=vert, ressort=violet)
-- Labels avec petits backgrounds pill `bg-black/40 px-1.5 rounded-sm` pour lisibilité
-- Police schéma : Inter 12px pour labels, JetBrains Mono 11px pour formules/valeurs
-- Suppression du `glass-card` partout (devient `bg-card border`)
+**B3. Étendre le prompt IA**
+- Ajouter un exemple complet `inclined_pulley` avec exactement l'énoncé donné par l'utilisateur (bloc 2kg sur plan 30° + corde + poulie + masse 1kg + μ=0.2).
+- Liste explicite des **systèmes combinés** détectables : `inclined_pulley`, `double_pulley` (Atwood asymétrique), `spring_inclined` (plus tard).
+- Règle de décision claire : "si l'énoncé mentionne 2+ objets reliés → scénario combiné, jamais simple".
+- Passer le modèle à `google/gemini-2.5-pro` pour les énoncés complexes (meilleur reasoning).
 
-## 5. Fichiers impactés
+### C. Sync timeline ↔ animation (priorité 2)
+
+**C1. Étendre `TimelineStep`**
+- Ajouter `t_ratio?: number` (0..1) : à quel moment de l'animation l'étape se réfère.
+- L'IA renseigne ces ancres (ex. "à l'impact" → `t_ratio: 1`, "moment initial" → `t_ratio: 0`, "à mi-chute" → `t_ratio: 0.5`).
+
+**C2. Logique dans `Index.tsx`**
+- Clic sur étape `i` → si `step.t_ratio != null` → `setT(step.t_ratio * scene.duration)`.
+- Pendant la lecture : déduire l'étape active du `t` courant en cherchant la dernière étape avec `t_ratio ≤ t/duration`. La sélectionner automatiquement.
+- Mode "verrouillé" si user scrub manuellement (toggle simple : "suivre l'animation" ON/OFF).
+
+### D. Décomposition projetée des forces (priorité 2)
+
+**D1. Nouveau type d'étape** : `"projection"` dans `TimelineStep.type`.
+
+**D2. Logique de rendu**
+- Si `step.type === "projection"` et l'objet ciblé a un repère local de rotation `θ` → pour chaque force highlighted :
+  - Calculer composantes le long de x' et y' du repère local (rotation inverse).
+  - Dessiner deux flèches en **pointillés** dans la couleur de la force, plus fines, avec labels `Px'`, `Py'`.
+- Composant `ForceProjectionRenderer` qui prend `{ force, localRotationDeg, originPx }`.
+
+### E. Circuits électriques (priorité 3, simple)
+
+**E1. Solveur `circuit.ts`**
+- Layout rectangulaire fixe (boucle). L'IA fournit liste ordonnée : `["battery", "R", "wire", "C", "wire"]`.
+- Placement automatique en grille rectangulaire (4 segments : haut, droite, bas, gauche).
+- Composants déjà dispos : `BatteryRenderer`, `ResistorRenderer`, `CapacitorRenderer`, `WireRenderer`.
+
+**E2. Animation courant**
+- Des points lumineux (cercles) qui se déplacent le long du périmètre de la boucle à vitesse `v ∝ I`.
+- Position des points : paramétrisation par longueur cumulée du périmètre, mod L, avancement = `t · v`.
+
+**E3. Ajout exemple circuit dans le prompt IA**.
+
+---
+
+## Fichiers impactés
 
 | Fichier | Action |
 |---|---|
-| `src/lib/physics/animation.ts` | NOUVEAU — moteur temporel par scénario |
-| `src/lib/physics/scenarios/*.ts` | MODIFIÉ — accepter `t` et calculer positions animées + forces dynamiques |
-| `src/lib/physics/layoutEngine.ts` | MODIFIÉ — signature `computeLayout(data, t?)` |
-| `src/components/AnimationPlayer.tsx` | NOUVEAU — Play/Pause/Seek/Speed |
-| `src/components/renderers/WorldAxisRenderer.tsx` | NOUVEAU — repère global fixe |
-| `src/components/renderers/LocalAxisRenderer.tsx` | NOUVEAU — repère lié à un solide |
-| `src/components/SceneRenderer.tsx` | MODIFIÉ — toujours afficher repère monde + repères locaux des solides |
-| `src/components/ExerciseInput.tsx` | MODIFIÉ — devient compact (sidebar collapsable) |
-| `src/components/ControlsPanel.tsx` | MODIFIÉ — sliders inline plus compacts, sans le bloc steps |
-| `src/components/StepsPanel.tsx` | MODIFIÉ — design plus compact, mise en avant formule |
-| `src/pages/Index.tsx` | REFONTE — nouveau layout 3 colonnes grand écran |
-| `src/index.css` | MODIFIÉ — palette ajustée, suppression glass |
-| `tailwind.config.ts` | MODIFIÉ — couleurs forces, secondary violet |
-| `src/types/cognitive.ts` | MODIFIÉ — ajout `animation?: { duration, autoplay }` dans `DiagramSpec` |
+| `src/lib/physics/coords.ts` | `makeWorldAxis` ignore vp, utilise coin canvas fixe |
+| `src/lib/physics/scenarios/inclinedPlane.ts` | Fix `dStart`/durée, clamping correct |
+| `src/lib/physics/scenarios/spring.ts` | Bloc touche le sol |
+| `src/lib/physics/scenarios/horizontal.ts` | Bloc touche le sol (vérif) |
+| `src/lib/physics/scenarios/inclinedPulley.ts` | NOUVEAU — solveur combiné |
+| `src/lib/physics/scenarios/circuit.ts` | NOUVEAU — boucle + courant animé |
+| `src/lib/physics/layoutEngine.ts` | Dispatcher: ajouter `inclined_pulley`, `circuit` |
+| `src/lib/physics/animation.ts` | `defaultDuration` pour nouveaux scénarios |
+| `src/types/cognitive.ts` | `ScenarioType` étendu, `TimelineStep.t_ratio`, type `"projection"` |
+| `src/components/renderers/ForceProjectionRenderer.tsx` | NOUVEAU — composantes pointillées |
+| `src/components/renderers/CurrentFlowRenderer.tsx` | NOUVEAU — points lumineux en boucle |
+| `src/components/SceneRenderer.tsx` | Branche les 2 nouveaux renderers + projection si `step.type==="projection"` |
+| `src/pages/Index.tsx` | Sync clic-étape → t, sync t → étape active, toggle "suivre" |
+| `supabase/functions/parse-exercise/index.ts` | Modèle `gemini-2.5-pro`, prompt enrichi (systèmes combinés + circuits + `t_ratio`), schema étendu |
 
-## 6. Hors scope (V2.2 plus tard)
-
-- OCR image (déjà reporté)
-- Circuits électriques animés
-- Mode "hypothèse" (changer paramètres et comparer)
-- Synchronisation timeline ↔ animation (un step déclenche un sous-segment animé)
+---
 
 ## Scope cette itération
 
-Animation physique réelle pour les 7 scénarios mécaniques + repères corrects (monde + local) + refonte layout grand écran centré sur le schéma.
+- **Priorité haute** : fixes (repère monde fixe, plan incliné, ressort touche sol) + scénario `inclined_pulley` + amélioration prompt IA pour systèmes combinés (l'énoncé exact donné doit marcher parfaitement).
+- **Priorité moyenne** : sync timeline ↔ animation + projection forces sur repère local.
+- **Priorité basse** : circuits électriques basiques (R + batterie + boucle, sans Kirchhoff complexe).
+
+Hors scope : OCR image, double pendule, RLC complets, mode hypothèse comparatif.
 
