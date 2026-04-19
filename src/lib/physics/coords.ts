@@ -57,14 +57,17 @@ export function forceArrowLength(valueN: number): number {
   return Math.max(44, Math.min(120, raw));
 }
 
-/** Construit l'élément "world_axis" — repère monde fixe en bas-gauche. */
+/**
+ * Repère MONDE — toujours fixé en bas-gauche du CANVAS SVG, indépendamment du viewport physique.
+ * Le scalePxPerM affiché reste celui du viewport pour l'échelle "1 m".
+ */
 export function makeWorldAxis(vp: Viewport): {
   position: Vec2;
   size: { w: number; h: number };
   meta: Record<string, number>;
 } {
   return {
-    position: { x: vp.originX, y: vp.originY },
+    position: { x: 50, y: vp.height - 40 },
     size: { w: 70, h: 70 },
     meta: { scalePxPerM: vp.scale },
   };

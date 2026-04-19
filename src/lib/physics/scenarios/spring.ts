@@ -3,9 +3,7 @@ import { makeViewport, toSVG, forceArrowLength, makeWorldAxis } from "../coords"
 import { weight, FORCE_COLORS, customForce } from "../forces";
 
 /**
- * Ressort horizontal:
- * Phase 1 [0 .. 1.2s]: compression linéaire de 0 à x_max (force appliquée visible)
- * Phase 2 [1.2s ..]: oscillation libre x(t') = x_max·cos(ω·(t-1.2))
+ * Ressort horizontal. Bloc TOUCHE le sol (centre à y = sizeM/2).
  */
 export function computeSpring(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
@@ -17,39 +15,36 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
   const m = spec.objects[0]?.mass ?? constants.m ?? 1;
 
   const scalePx = 130;
-  const vp = makeViewport(W, H, scalePx, 110, H / 2 + 40);
+  const vp = makeViewport(W, H, scalePx, 110, H - 110);
 
   const elements: ResolvedElement[] = [];
 
-  // Sol
+  // Sol à y=0
   elements.push({
     id: "ground",
     type: "ground",
-    position: toSVG({ x: -0.5, y: -0.5 }, vp),
-    end: toSVG({ x: L0 + xMax + 1.5, y: -0.5 }, vp),
+    position: toSVG({ x: -0.5, y: 0 }, vp),
+    end: toSVG({ x: L0 + xMax + 1.5, y: 0 }, vp),
   });
 
   // Mur gauche
   elements.push({
     id: "wall",
     type: "wall",
-    position: toSVG({ x: 0, y: 1 }, vp),
-    end: toSVG({ x: 0, y: -0.5 }, vp),
+    position: toSVG({ x: 0, y: 1.5 }, vp),
+    end: toSVG({ x: 0, y: 0 }, vp),
   });
 
-  // Phase d'animation
   const COMPRESS_TIME = 1.2;
-  let xCompression: number; // déplacement vers la GAUCHE (positif = comprimé)
+  let xCompression: number;
   let phase: "compression" | "release";
   let phaseLabel: string;
 
   if (frame.t < COMPRESS_TIME) {
-    // Compression linéaire
     xCompression = (frame.t / COMPRESS_TIME) * xMax;
     phase = "compression";
     phaseLabel = "Phase 1 — Compression";
   } else {
-    // Oscillation libre
     const omega = Math.sqrt(k / m);
     const tt = frame.t - COMPRESS_TIME;
     xCompression = xMax * Math.cos(omega * tt);
@@ -57,30 +52,31 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
     phaseLabel = `Phase 2 — Oscillation (ω=${omega.toFixed(2)})`;
   }
 
-  // Position du bloc : longueur naturelle - compression
-  const blockX = L0 - xCompression;
   const sizeM = spec.objects[0]?.size ?? 0.5;
   const sizePx = sizeM * vp.scale;
-  const center = toSVG({ x: blockX, y: 0 }, vp);
+  // Bloc touche le sol: centre à y = sizeM/2
+  const blockX = L0 - xCompression;
+  const yCenter = sizeM / 2;
+  const center = toSVG({ x: blockX, y: yCenter }, vp);
   const objId = spec.objects[0]?.id ?? "block";
 
-  // Position d'équilibre (ligne pointillée verticale)
-  const eqX = toSVG({ x: L0, y: 0 }, vp);
+  // Position d'équilibre
+  const eqX = toSVG({ x: L0, y: yCenter }, vp);
   elements.push({
     id: "equilibrium",
     type: "rope",
-    position: { x: eqX.x, y: eqX.y - 60 },
-    end: { x: eqX.x, y: eqX.y + 60 },
+    position: { x: eqX.x, y: eqX.y - 70 },
+    end: { x: eqX.x, y: eqX.y + 30 },
     meta: { dashed: true },
     label: "x=0",
   });
 
-  // Ressort entre mur et bloc
+  // Ressort à la hauteur du centre du bloc
   elements.push({
     id: "spring",
     type: "spring",
-    position: toSVG({ x: 0, y: 0 }, vp),
-    end: toSVG({ x: blockX - sizeM / 2, y: 0 }, vp),
+    position: toSVG({ x: 0, y: yCenter }, vp),
+    end: toSVG({ x: blockX - sizeM / 2, y: yCenter }, vp),
     meta: { coils: 10 },
     label: `k=${k} N/m`,
   });
@@ -93,11 +89,9 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
     label: spec.objects[0]?.label,
   });
 
-  // Repère monde
   const wa = makeWorldAxis(vp);
   elements.push({ id: "world_axis", type: "world_axis", ...wa });
 
-  // Repère local au centre du bloc
   elements.push({
     id: "local_axis",
     type: "local_axis",
@@ -106,11 +100,10 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
   });
 
   const objectCenters: Record<string, Vec2> = { [objId]: center };
+  const objectLocalRotations: Record<string, number> = { [objId]: 0 };
   const forces: ResolvedForce[] = [];
 
-  // Force ressort: F = k * x_compression vers la DROITE quand comprimé (rappel),
-  // vers la gauche quand étiré (oscillation)
-  const Fspring = k * xCompression; // signé
+  const Fspring = k * xCompression;
   if (Math.abs(Fspring) > 0.5) {
     const ap = forceArrowLength(Fspring);
     const sign = Fspring > 0 ? 1 : -1;
@@ -126,7 +119,6 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
     });
   }
 
-  // Pendant la compression: force appliquée (l'utilisateur pousse vers la gauche)
   if (phase === "compression") {
     const Fapp = k * xCompression + 5;
     const ap = forceArrowLength(Fapp);
@@ -142,13 +134,12 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
     });
   }
 
-  // Forces déclarées par l'IA (poids, normal, etc.)
   spec.forces.filter((f) => f.target === objId).forEach((f) => {
     let vec: Vec2 = { x: 0, y: 0 };
     if (f.type === "weight") vec = weight(m, g);
     else if (f.type === "normal") vec = { x: 0, y: m * g };
-    else if (f.type === "spring") return; // déjà géré
-    else if (f.type === "applied") return; // déjà géré
+    else if (f.type === "spring") return;
+    else if (f.type === "applied") return;
     else if (f.direction) vec = customForce(f.direction, f.value ?? k * xMax);
     const mag = Math.hypot(vec.x, vec.y);
     if (mag < 1e-6) return;
@@ -165,5 +156,5 @@ export function computeSpring(spec: DiagramSpec, constants: Record<string, numbe
     });
   });
 
-  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
+  return { width: W, height: H, elements, forces, objectCenters, objectLocalRotations, phaseLabel };
 }
