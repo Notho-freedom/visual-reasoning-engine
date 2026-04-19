@@ -10,6 +10,7 @@ export type ScenarioType =
   | "free_fall"
   | "inclined_plane"
   | "pulley"
+  | "inclined_pulley"
   | "projectile"
   | "spring"
   | "pendulum"
@@ -49,8 +50,15 @@ export interface SemanticForce {
   direction?: Vec2;
   orientation?: string;
   color?: string;
-  /** appliquée seulement pendant une phase d'animation: "pre" | "post" | "always" */
   phase?: "pre" | "post" | "always";
+}
+
+export interface CircuitComponent {
+  id: string;
+  type: "battery" | "resistor" | "capacitor" | "wire";
+  label?: string;
+  value?: number;
+  unit?: string;
 }
 
 export interface DiagramSpec {
@@ -59,15 +67,16 @@ export interface DiagramSpec {
   objects: SemanticObject[];
   forces: SemanticForce[];
   showAxis?: boolean;
-  /** durée totale animation (s), autoplay */
   animation?: { duration?: number; autoplay?: boolean };
+  /** Pour scénario "circuit" : composants ordonnés autour de la boucle. */
+  circuit?: CircuitComponent[];
 }
 
 // ===== TIMELINE =====
 
 export interface TimelineStep {
   id: string;
-  type: "concept" | "equation" | "substitution" | "solve" | "diagram" | "motion";
+  type: "concept" | "equation" | "substitution" | "solve" | "diagram" | "motion" | "projection";
   title: string;
   description?: string;
   formula?: string;
@@ -75,6 +84,10 @@ export interface TimelineStep {
   dependencies?: string[];
   highlight_elements?: string[];
   highlight_forces?: string[];
+  /** Position temporelle dans l'animation, 0..1. */
+  t_ratio?: number;
+  /** Objet cible pour la projection (id). */
+  projection_target?: string;
 }
 
 export interface CognitiveJSON {
@@ -97,11 +110,8 @@ export interface CognitiveJSON {
 // ===== ANIMATION =====
 
 export interface AnimationFrame {
-  /** temps absolu en secondes */
   t: number;
-  /** durée totale en secondes */
   duration: number;
-  /** progression 0..1 */
   progress: number;
 }
 
@@ -125,7 +135,12 @@ export interface ResolvedElement {
     | "pendulum_arm"
     | "angle_arc"
     | "dimension"
-    | "trail";
+    | "trail"
+    | "wire"
+    | "resistor"
+    | "capacitor"
+    | "battery"
+    | "current_flow";
   position: Vec2;
   end?: Vec2;
   size?: { w: number; h: number };
@@ -143,7 +158,6 @@ export interface ResolvedForce {
   color: string;
   type: ForceType;
   target: string;
-  /** force visuellement atténuée (hors phase) */
   faded?: boolean;
 }
 
@@ -153,8 +167,8 @@ export interface ResolvedScene {
   elements: ResolvedElement[];
   forces: ResolvedForce[];
   objectCenters: Record<string, Vec2>;
-  /** durée naturelle de l'animation pour ce scénario (s) */
+  /** rotation locale par objet (degrés, sens horaire SVG) — utile pour projections */
+  objectLocalRotations?: Record<string, number>;
   duration?: number;
-  /** message d'animation (ex: "Phase de compression") */
   phaseLabel?: string;
 }

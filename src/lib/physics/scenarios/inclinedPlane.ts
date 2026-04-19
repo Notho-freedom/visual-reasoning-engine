@@ -13,12 +13,11 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
   const a = deg2rad(angleDeg);
   const horizExtent = slopeLen * Math.cos(a);
   const vertExtent = slopeLen * Math.sin(a);
-  const scalePx = Math.min((W - 240) / Math.max(horizExtent + 1.5, 1), (H - 180) / Math.max(vertExtent + 1, 1));
-  const vp = makeViewport(W, H, scalePx, 110, H - 90);
+  const scalePx = Math.min((W - 280) / Math.max(horizExtent + 1.5, 1), (H - 200) / Math.max(vertExtent + 1, 1));
+  const vp = makeViewport(W, H, scalePx, 130, H - 100);
 
   const elements: ResolvedElement[] = [];
 
-  // Sol
   elements.push({
     id: "ground",
     type: "ground",
@@ -26,7 +25,6 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
     end: toSVG({ x: horizExtent + 1, y: 0 }, vp),
   });
 
-  // Pente
   const slopeBase = toSVG({ x: 0, y: 0 }, vp);
   const slopeFootRight = toSVG({ x: horizExtent, y: 0 }, vp);
   const slopeTop = toSVG({ x: horizExtent, y: vertExtent }, vp);
@@ -43,7 +41,6 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
     },
   });
 
-  // Arc d'angle au pied
   elements.push({
     id: "angle_arc",
     type: "angle_arc",
@@ -52,11 +49,11 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
     label: `α=${angleDeg.toFixed(0)}°`,
   });
 
-  // Repère MONDE
   const wa = makeWorldAxis(vp);
   elements.push({ id: "world_axis", type: "world_axis", ...wa });
 
   const objectCenters: Record<string, Vec2> = {};
+  const objectLocalRotations: Record<string, number> = {};
   const forces: ResolvedForce[] = [];
 
   spec.objects.forEach((obj) => {
@@ -64,18 +61,22 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
     const sizeM = obj.size ?? 0.55;
     const sizePx = sizeM * vp.scale;
 
-    // Position initiale en haut, glisse vers le bas
     const accel = Math.max(0.05, g * (Math.sin(a) - mu * Math.cos(a)));
-    const dStart = obj.distance ?? slopeLen - 0.5;
-    // distance parcourue depuis le départ (vers le bas)
+    // Toujours partir du HAUT de la pente. On ignore obj.distance fourni par l'IA si farfelu.
+    const dStart = Math.max(0.5, slopeLen - 0.5);
+    // Distance parcourue depuis le départ (vers le bas le long de la pente)
     const sParcouru = 0.5 * accel * frame.t * frame.t;
-    const dRestant = Math.max(0, dStart - sParcouru); // distance depuis le bas
+    // Position courante depuis le pied de pente, le long de la pente
+    const dRestant = Math.max(0.3, dStart - sParcouru);
 
     const halfDiag = sizeM / 2;
+    // Position du centre du bloc : sur la pente + décalage perpendiculaire (vers le haut de la normale)
     const cxPhys = dRestant * Math.cos(a) + halfDiag * -Math.sin(a);
     const cyPhys = dRestant * Math.sin(a) + halfDiag * Math.cos(a);
     const center = toSVG({ x: cxPhys, y: cyPhys }, vp);
     objectCenters[obj.id] = center;
+    // Rotation locale = -angleDeg en convention SVG (axes tournés avec la pente)
+    objectLocalRotations[obj.id] = angleDeg;
 
     elements.push({
       id: obj.id,
@@ -87,7 +88,6 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
       meta: { mass: m },
     });
 
-    // Repère LOCAL incliné (x' le long de la pente vers le HAUT, y' perpendiculaire)
     elements.push({
       id: `local_axis_${obj.id}`,
       type: "local_axis",
@@ -101,7 +101,6 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
         case "weight": vec = weight(m, g); break;
         case "normal": vec = normalOnSlope(m, g, angleDeg); break;
         case "friction": {
-          // Frottement opposé au mouvement → ici le bloc descend, frottement vers le haut
           vec = frictionOnSlope(m, g, angleDeg, mu || 0.2, "up_slope");
           break;
         }
@@ -132,6 +131,6 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
 
   const accel = g * (Math.sin(a) - mu * Math.cos(a));
   const v = Math.max(0, accel) * frame.t;
-  const phaseLabel = `v = ${v.toFixed(2)} m/s`;
-  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
+  const phaseLabel = `v = ${v.toFixed(2)} m/s   a = ${accel.toFixed(2)} m/s²`;
+  return { width: W, height: H, elements, forces, objectCenters, objectLocalRotations, phaseLabel };
 }

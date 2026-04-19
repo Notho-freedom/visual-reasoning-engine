@@ -15,22 +15,35 @@ export function defaultDuration(scenario: ScenarioType, params: Record<string, n
     }
     case "inclined_plane": {
       const L = params.length ?? 5;
+      const dStart = Math.max(0.5, L - 0.5);
       const alpha = ((params.angle ?? constants.alpha ?? 30) * Math.PI) / 180;
       const mu = constants.mu ?? params.mu ?? 0;
       const a = Math.max(0.1, g * (Math.sin(alpha) - mu * Math.cos(alpha)));
-      return Math.sqrt((2 * L) / a);
+      return Math.sqrt((2 * dStart) / a);
+    }
+    case "inclined_pulley": {
+      const L = params.length ?? 4.5;
+      const dStart = Math.max(1, L - 0.6);
+      const alpha = ((params.angle ?? constants.alpha ?? 30) * Math.PI) / 180;
+      const mu = constants.mu ?? params.mu ?? 0;
+      const m1 = constants.m1 ?? constants.m ?? 2;
+      const m2 = constants.m2 ?? 1;
+      const driving = Math.abs(m2 * g - m1 * g * Math.sin(alpha));
+      const friction = mu * m1 * g * Math.cos(alpha);
+      const a = Math.max(0.3, (driving - friction) / (m1 + m2));
+      const dMax = Math.min(dStart, 1.5);
+      return Math.max(1.5, Math.sqrt((2 * dMax) / a));
     }
     case "spring": {
       const k = constants.k ?? params.k ?? 50;
       const m = constants.m ?? 1;
       const omega = Math.sqrt(k / m);
-      // 1.2s compression + 1 période d'oscillation
       return 1.2 + (2 * Math.PI) / omega;
     }
     case "pendulum": {
       const L = params.length ?? constants.L ?? 1.5;
       const omega = Math.sqrt(g / L);
-      return 2 * ((2 * Math.PI) / omega); // 2 périodes
+      return 2 * ((2 * Math.PI) / omega);
     }
     case "pulley": {
       const m1 = constants.m1 ?? 2;
@@ -44,6 +57,8 @@ export function defaultDuration(scenario: ScenarioType, params: Record<string, n
       const dist = 5;
       return Math.sqrt((2 * dist) / Math.max(a, 0.5));
     }
+    case "circuit":
+      return 4;
     default:
       return 3;
   }

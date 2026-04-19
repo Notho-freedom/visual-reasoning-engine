@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import type { TimelineStep } from "@/types/cognitive";
-import { BookOpen, Calculator, Replace, CheckCircle2, Image, Play } from "lucide-react";
+import { BookOpen, Calculator, Replace, CheckCircle2, Image, Play, Axis3D } from "lucide-react";
 
 interface StepsPanelProps {
   steps: TimelineStep[];
@@ -16,6 +16,7 @@ const typeIcons: Record<string, React.ReactNode> = {
   solve: <CheckCircle2 className="h-3.5 w-3.5" />,
   diagram: <Image className="h-3.5 w-3.5" />,
   motion: <Play className="h-3.5 w-3.5" />,
+  projection: <Axis3D className="h-3.5 w-3.5" />,
 };
 
 const StepsPanel: React.FC<StepsPanelProps> = ({ steps, currentStep, onStepClick }) => {
