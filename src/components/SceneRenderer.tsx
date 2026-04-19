@@ -15,6 +15,12 @@ import DimensionRenderer from "./renderers/DimensionRenderer";
 import ProjectilePathRenderer from "./renderers/ProjectilePathRenderer";
 import AngleArcRenderer from "./renderers/AngleArcRenderer";
 import PendulumArmRenderer from "./renderers/PendulumArmRenderer";
+import WireRenderer from "./renderers/WireRenderer";
+import ResistorRenderer from "./renderers/ResistorRenderer";
+import CapacitorRenderer from "./renderers/CapacitorRenderer";
+import BatteryRenderer from "./renderers/BatteryRenderer";
+import CurrentFlowRenderer from "./renderers/CurrentFlowRenderer";
+import ForceProjectionRenderer from "./renderers/ForceProjectionRenderer";
 
 interface SceneRendererProps {
   scene: ResolvedScene;
@@ -25,13 +31,29 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step }) => {
   const highlightedElements = new Set(step?.highlight_elements ?? []);
   const highlightedForces = new Set(step?.highlight_forces ?? []);
 
+  const isProjection = step?.type === "projection";
+  const projectionTargetId = step?.projection_target ?? (step?.highlight_forces?.[0]
+    ? scene.forces.find(f => f.id === step.highlight_forces![0])?.target
+    : undefined);
+
+  const projectionForces = isProjection
+    ? scene.forces.filter(f =>
+        (highlightedForces.size === 0 || highlightedForces.has(f.id)) &&
+        (projectionTargetId == null || f.target === projectionTargetId)
+      )
+    : [];
+
+  const projectionRotation = projectionTargetId
+    ? scene.objectLocalRotations?.[projectionTargetId] ?? 0
+    : 0;
+  const projectionOrigin = projectionTargetId ? scene.objectCenters[projectionTargetId] : undefined;
+
   return (
     <svg
       viewBox={`0 0 ${scene.width} ${scene.height}`}
       className="w-full h-full block"
       preserveAspectRatio="xMidYMid meet"
     >
-      {/* Background subtle grid */}
       <defs>
         <pattern id="grid" width={40} height={40} patternUnits="userSpaceOnUse">
           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(var(--border))" strokeWidth={0.5} opacity={0.4} />
@@ -66,6 +88,11 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step }) => {
           case "pendulum_arm": return <PendulumArmRenderer key={el.id} element={el} />;
           case "angle_arc": return <AngleArcRenderer key={el.id} element={el} />;
           case "dimension": return <DimensionRenderer key={el.id} element={el} />;
+          case "wire": return <WireRenderer key={el.id} element={el} />;
+          case "resistor": return <ResistorRenderer key={el.id} element={el} />;
+          case "capacitor": return <CapacitorRenderer key={el.id} element={el} />;
+          case "battery": return <BatteryRenderer key={el.id} element={el} />;
+          case "current_flow": return <CurrentFlowRenderer key={el.id} element={el} />;
           default: return null;
         }
       })}
@@ -73,6 +100,16 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step }) => {
       {/* Forces */}
       {scene.forces.map((f) => (
         <VectorRenderer key={f.id} force={f} highlighted={highlightedForces.has(f.id)} />
+      ))}
+
+      {/* Projections sur axes locaux */}
+      {isProjection && projectionOrigin && projectionForces.map((f) => (
+        <ForceProjectionRenderer
+          key={`proj-${f.id}`}
+          force={f}
+          origin={projectionOrigin}
+          localRotationDeg={projectionRotation}
+        />
       ))}
 
       {/* Step overlay */}

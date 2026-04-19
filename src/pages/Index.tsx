@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Atom, PanelLeft, X, Sparkles, Loader2, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { Atom, PanelLeft, X, Sparkles, Loader2, ArrowRight, ChevronLeft, ChevronRight, Link2, Unlink } from "lucide-react";
 import SceneRenderer from "@/components/SceneRenderer";
 import StepsPanel from "@/components/StepsPanel";
 import ControlsPanel from "@/components/ControlsPanel";
@@ -13,10 +13,12 @@ import type { CognitiveJSON } from "@/types/cognitive";
 const EXAMPLES = [
   "Un objet de 2 kg est lâché sans vitesse initiale d'une hauteur de 20 m. Calculer le temps de chute et la vitesse à l'arrivée.",
   "Un bloc de 5 kg glisse sur un plan incliné de 30° avec un coefficient de frottement μ=0.2. Déterminer l'accélération.",
+  "Un bloc de 2 kg est placé sur un plan incliné de 30°. Il est relié par une corde passant sur une poulie idéale à une masse suspendue de 1 kg. Coefficient de frottement μ=0.2. Déterminer l'accélération du système et la tension dans la corde. g = 9.81 m/s².",
   "Un projectile est lancé à 20 m/s avec un angle de 45°. Calculer la portée et la hauteur maximale.",
   "Deux masses 3 kg et 5 kg reliées par une corde sur une poulie. Calculer l'accélération.",
   "Un ressort k=200 N/m est comprimé de 10 cm avec une masse de 1 kg. Calculer l'énergie potentielle.",
   "Un pendule de longueur 1.5 m est lâché à 25°. Calculer la période.",
+  "Un circuit comporte une batterie de 12V en série avec une résistance de 100Ω et un condensateur de 10µF. Décrire le régime transitoire.",
 ];
 
 const Index = () => {
@@ -28,6 +30,9 @@ const Index = () => {
   const [constants, setConstants] = useState<Record<string, number>>({});
   const [t, setT] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  // pour distinguer un clic d'étape (qui pilote t) d'une lecture qui doit piloter l'étape
+  const stepClickInFlight = useRef(false);
 
   const handleSubmit = useCallback(async (text: string) => {
     setIsLoading(true);
@@ -54,7 +59,6 @@ const Index = () => {
     }
   }, [toast]);
 
-  // Recalcul du layout à chaque changement de t / constantes
   const scene = useMemo(() => {
     if (!data) return null;
     try {
@@ -65,17 +69,47 @@ const Index = () => {
     }
   }, [data, constants, t]);
 
-  // Reset t quand on change les constantes principales
   useEffect(() => {
     setT(0);
   }, [data?.diagram?.scenario]);
+
+  // Sync animation → étape active
+  useEffect(() => {
+    if (!syncEnabled || !data || !scene) return;
+    if (stepClickInFlight.current) {
+      stepClickInFlight.current = false;
+      return;
+    }
+    const duration = scene.duration ?? 1;
+    const ratio = duration > 0 ? t / duration : 0;
+    // Trouve la dernière étape avec t_ratio <= ratio
+    let bestIdx = -1;
+    data.timeline.forEach((s, i) => {
+      if (typeof s.t_ratio === "number" && s.t_ratio <= ratio + 0.001) {
+        bestIdx = i;
+      }
+    });
+    if (bestIdx >= 0 && bestIdx !== currentStep) {
+      setCurrentStep(bestIdx);
+    }
+  }, [t, scene, data, syncEnabled, currentStep]);
+
+  const handleStepClick = useCallback((i: number) => {
+    setCurrentStep(i);
+    if (syncEnabled && data && scene) {
+      const ratio = data.timeline[i]?.t_ratio;
+      if (typeof ratio === "number") {
+        stepClickInFlight.current = true;
+        setT(Math.max(0, Math.min(scene.duration ?? 1, ratio * (scene.duration ?? 1))));
+      }
+    }
+  }, [data, scene, syncEnabled]);
 
   const totalSteps = data?.timeline.length || 0;
   const step = data?.timeline[currentStep];
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Header */}
       <header className="h-12 border-b border-border px-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <button
@@ -99,9 +133,7 @@ const Index = () => {
         )}
       </header>
 
-      {/* Body */}
       <div className="flex-1 flex min-h-0">
-        {/* SIDEBAR : énoncé */}
         {sidebarOpen && (
           <aside className="w-72 shrink-0 border-r border-border flex flex-col bg-sidebar">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
@@ -140,7 +172,7 @@ const Index = () => {
                     disabled={isLoading}
                     className="w-full text-left text-[11px] px-2.5 py-2 rounded-md border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-secondary/50 transition leading-snug disabled:opacity-30"
                   >
-                    {ex.length > 70 ? ex.slice(0, 70) + "…" : ex}
+                    {ex.length > 80 ? ex.slice(0, 80) + "…" : ex}
                   </button>
                 ))}
               </div>
@@ -148,7 +180,6 @@ const Index = () => {
           </aside>
         )}
 
-        {/* CENTRE : schéma + animation + sliders */}
         <main className="flex-1 flex flex-col min-w-0 p-4 gap-3 overflow-hidden">
           {!data && !isLoading && (
             <div className="flex-1 flex items-center justify-center">
@@ -177,20 +208,17 @@ const Index = () => {
 
           {data && scene && !isLoading && (
             <>
-              {/* Schéma */}
               <div className="flex-1 min-h-0 rounded-xl overflow-hidden scene-frame">
                 <SceneRenderer scene={scene} step={step} />
               </div>
 
-              {/* Player */}
               <AnimationPlayer
                 duration={scene.duration ?? 3}
                 t={t}
-                onTimeChange={setT}
+                onTimeChange={(newT) => { stepClickInFlight.current = false; setT(newT); }}
                 phaseLabel={scene.phaseLabel}
               />
 
-              {/* Sliders */}
               {Object.keys(constants).length > 0 && (
                 <div className="rounded-lg border border-border bg-card px-4 py-3">
                   <ControlsPanel
@@ -203,14 +231,21 @@ const Index = () => {
           )}
         </main>
 
-        {/* DROITE : étapes */}
         {data && !isLoading && (
           <aside className="w-80 shrink-0 border-l border-border flex flex-col bg-sidebar">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-foreground">Résolution</span>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCurrentStep((s) => Math.max(0, s - 1))}
+                  onClick={() => setSyncEnabled(s => !s)}
+                  className={`h-6 px-1.5 rounded flex items-center gap-1 text-[10px] font-mono transition ${syncEnabled ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground"}`}
+                  title={syncEnabled ? "Synchronisation activée" : "Synchronisation désactivée"}
+                >
+                  {syncEnabled ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
+                  sync
+                </button>
+                <button
+                  onClick={() => handleStepClick(Math.max(0, currentStep - 1))}
                   disabled={currentStep <= 0}
                   className="h-6 w-6 rounded hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
                 >
@@ -220,7 +255,7 @@ const Index = () => {
                   {currentStep + 1}/{totalSteps}
                 </span>
                 <button
-                  onClick={() => setCurrentStep((s) => Math.min(totalSteps - 1, s + 1))}
+                  onClick={() => handleStepClick(Math.min(totalSteps - 1, currentStep + 1))}
                   disabled={currentStep >= totalSteps - 1}
                   className="h-6 w-6 rounded hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
                 >
@@ -232,7 +267,7 @@ const Index = () => {
               <StepsPanel
                 steps={data.timeline}
                 currentStep={currentStep}
-                onStepClick={(i) => setCurrentStep(i)}
+                onStepClick={handleStepClick}
               />
             </div>
           </aside>
