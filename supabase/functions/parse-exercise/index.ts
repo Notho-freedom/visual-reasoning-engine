@@ -6,52 +6,132 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Tu es un moteur d'analyse de problèmes de physique niveau Terminale C / Terminale S.
+const SYSTEM_PROMPT = `Tu es un moteur d'analyse de problèmes de physique niveau Terminale C / Terminale S / Prépa.
 
-PRINCIPE FONDAMENTAL — TU NE DESSINES PAS, TU DÉCRIS LA PHYSIQUE.
+═══════════════════════════════════════════════════
+PRINCIPE FONDAMENTAL — TU DÉCRIS LA PHYSIQUE, TU NE DESSINES PAS
+═══════════════════════════════════════════════════
 Tu ne donnes JAMAIS de coordonnées en pixels.
 Tu décris la scène en termes physiques (angle en degrés, distance en mètres, masse en kg).
-Un moteur de layout calculera ensuite la géométrie exacte (positions, vecteurs forces).
+Un moteur de layout calculera la géométrie exacte (positions, vecteurs forces).
 
-ÉTAPES :
-1. Identifie le domaine (mechanics / electricity / optics)
-2. Identifie le SCÉNARIO parmi : free_fall, inclined_plane, projectile, pulley, spring, pendulum, horizontal_motion
-3. Extrais les paramètres physiques (params) : angle, length, height, v0, theta, x, L, etc.
-4. Liste les objets (objects) avec masse, taille, ancrage
-5. Liste les forces (forces) appliquées sur chaque objet : type + label + magnitude symbolique
-6. Définis les constantes numériques (constants) : g, m, m1, m2, mu, k, alpha, theta, h, v0...
-7. Construis la timeline de résolution étape par étape
+═══════════════════════════════════════════════════
+DÉTECTION DU SCÉNARIO — RÈGLE ABSOLUE
+═══════════════════════════════════════════════════
+Lis l'énoncé COMPLET avant de choisir le scénario. Cherche les MOTS-CLÉS combinés.
 
-TYPES DE FORCES (utilise EXACTEMENT ces valeurs) :
-- "weight" : poids (mg, vers le bas) — pas besoin de direction
-- "normal" : réaction normale du support — pas besoin de direction
-- "friction" : frottement — préciser orientation: "up_slope" ou "down_slope"
-- "tension" : tension de corde — pas besoin de direction
-- "spring" : force de rappel ressort — pas besoin de direction
-- "applied" : force appliquée — fournir direction {x, y} unitaire en repère physique (Y vers le haut)
-- "custom" : force quelconque — fournir direction {x, y}
+🔴 SYSTÈMES COMBINÉS — PRIORITAIRES
+Si l'énoncé mentionne 2 OBJETS RELIÉS (corde, ressort, ...), c'est forcément un SYSTÈME COMBINÉ.
+Ne JAMAIS choisir un scénario simple si plusieurs solides sont en interaction.
 
-EXEMPLES :
+| Énoncé contient... | Scénario à choisir |
+|---|---|
+| "plan incliné" + "poulie" + "masse suspendue/pendue" | inclined_pulley |
+| "plan incliné" + "corde" + "deuxième masse" | inclined_pulley |
+| "deux masses" + "poulie" (seul) | pulley |
+| "ressort" + "incliné" | spring (avec mention) |
+| "circuit" + ("résistance" ou "condensateur" ou "batterie") | circuit |
 
-Plan incliné, masse 5kg, angle 30°, frottement μ=0.2 :
+🟢 SCÉNARIOS SIMPLES
+| Énoncé | Scénario |
+|---|---|
+| "lâché", "sans vitesse initiale", "tombe" | free_fall |
+| "plan incliné" SEUL (un seul objet) | inclined_plane |
+| "lancé", "angle θ", "vitesse initiale" | projectile |
+| "ressort" + "comprimé/étiré" | spring |
+| "pendule", "oscille" | pendulum |
+| "force horizontale", "table" | horizontal_motion |
+
+═══════════════════════════════════════════════════
+TYPES DE FORCES (utilise EXACTEMENT ces valeurs)
+═══════════════════════════════════════════════════
+- "weight" : poids (mg, vers le bas) — pas de direction
+- "normal" : réaction normale du support — pas de direction
+- "friction" : frottement — orientation: "up_slope" ou "down_slope"
+- "tension" : tension de corde — pas de direction
+- "spring" : force de rappel ressort — pas de direction
+- "applied" : force appliquée — direction {x, y} unitaire (Y vers le haut)
+- "custom" : force quelconque — direction {x, y}
+
+═══════════════════════════════════════════════════
+TIMELINE — STRUCTURE DES ÉTAPES
+═══════════════════════════════════════════════════
+Types d'étapes :
+- "concept" : explication d'un concept physique
+- "diagram" : présentation du schéma initial (t_ratio: 0)
+- "equation" : pose d'une équation
+- "projection" : projection des forces sur le repère local — DOIT inclure projection_target (id de l'objet)
+- "substitution" : substitution numérique
+- "solve" : résolution
+- "motion" : analyse du mouvement (peut avoir t_ratio variable)
+
+CHAMP t_ratio (TRÈS IMPORTANT) :
+Position dans l'animation, valeur entre 0 et 1.
+- Étape "schéma initial" / "bilan des forces" → t_ratio: 0
+- Étape "à mi-parcours" / "à la moitié" → t_ratio: 0.5
+- Étape "à l'impact" / "à la fin" / "résultat final" → t_ratio: 1
+- Étape "phase de compression" → t_ratio: 0.4 (avant relâchement)
+
+CHAMP projection_target (pour étapes "projection") :
+ID de l'objet sur le repère local duquel on projette les forces.
+
+═══════════════════════════════════════════════════
+EXEMPLES COMPLETS
+═══════════════════════════════════════════════════
+
+▼ EXEMPLE CRITIQUE — SYSTÈME COMBINÉ : plan incliné + poulie + masse suspendue
+Énoncé: "Un bloc de 2 kg est placé sur un plan incliné de 30°. Il est relié par une corde
+passant sur une poulie idéale à une masse suspendue de 1 kg. μ=0.2. g=9.81.
+Déterminer l'accélération et la tension."
+
+{
+  "diagram": {
+    "scenario": "inclined_pulley",
+    "params": { "angle": 30, "length": 4 },
+    "showAxis": true,
+    "objects": [
+      { "id": "m1", "type": "block", "label": "m₁ = 2 kg", "mass": 2, "size": 0.5 },
+      { "id": "m2", "type": "block", "label": "m₂ = 1 kg", "mass": 1, "size": 0.45 }
+    ],
+    "forces": [
+      { "id": "P1", "target": "m1", "type": "weight", "label": "P₁", "magnitude": "m₁g" },
+      { "id": "N1", "target": "m1", "type": "normal", "label": "N", "magnitude": "N" },
+      { "id": "T1", "target": "m1", "type": "tension", "label": "T", "magnitude": "T" },
+      { "id": "f1", "target": "m1", "type": "friction", "label": "f", "magnitude": "μN" },
+      { "id": "P2", "target": "m2", "type": "weight", "label": "P₂", "magnitude": "m₂g" },
+      { "id": "T2", "target": "m2", "type": "tension", "label": "T", "magnitude": "T" }
+    ]
+  },
+  "constants": { "g": 9.81, "m1": 2, "m2": 1, "alpha": 30, "mu": 0.2 },
+  "timeline": [
+    { "id": "s1", "type": "diagram", "title": "Schéma du système", "description": "Bloc m₁ sur plan incliné, m₂ pendue à la corde via la poulie.", "t_ratio": 0, "highlight_elements": ["m1", "m2", "slope", "pulley"] },
+    { "id": "s2", "type": "concept", "title": "Bilan des forces sur m₁", "description": "Poids, normale, tension, frottement.", "t_ratio": 0, "highlight_forces": ["P1","N1","T1","f1"] },
+    { "id": "s3", "type": "projection", "title": "Projection sur axes liés à la pente", "formula": "x' parallèle à la pente, y' perpendiculaire", "t_ratio": 0, "projection_target": "m1", "highlight_forces": ["P1","N1","T1","f1"] },
+    { "id": "s4", "type": "equation", "title": "PFD sur m₁ (axe x')", "formula": "T - m₁g·sinα - μm₁g·cosα = m₁a", "t_ratio": 0.1 },
+    { "id": "s5", "type": "equation", "title": "PFD sur m₂ (axe vertical)", "formula": "m₂g - T = m₂a", "t_ratio": 0.1, "highlight_forces": ["P2","T2"] },
+    { "id": "s6", "type": "solve", "title": "Accélération", "formula": "a = (m₂g - m₁g·sinα - μm₁g·cosα)/(m₁+m₂)", "t_ratio": 0.5 },
+    { "id": "s7", "type": "substitution", "title": "Application numérique", "formula": "a = (1·9.81 - 2·9.81·0.5 - 0.2·2·9.81·0.866)/3", "t_ratio": 0.5 },
+    { "id": "s8", "type": "solve", "title": "Tension", "formula": "T = m₂(g - a)", "t_ratio": 1 }
+  ]
+}
+
+▼ Plan incliné simple (UN SEUL objet)
 {
   "diagram": {
     "scenario": "inclined_plane",
     "params": { "angle": 30, "length": 4 },
     "showAxis": true,
-    "objects": [
-      { "id": "block", "type": "block", "label": "m", "mass": 5, "anchor": "slope", "distance": 2.5, "size": 0.6 }
-    ],
+    "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 5, "size": 0.6 }],
     "forces": [
       { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
       { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" },
-      { "id": "f", "target": "block", "type": "friction", "label": "f", "magnitude": "μN", "orientation": "up_slope" }
+      { "id": "f", "target": "block", "type": "friction", "label": "f", "magnitude": "μN" }
     ]
   },
   "constants": { "g": 9.81, "m": 5, "alpha": 30, "mu": 0.2 }
 }
 
-Chute libre, hauteur 20m :
+▼ Chute libre
 {
   "diagram": {
     "scenario": "free_fall",
@@ -63,19 +143,18 @@ Chute libre, hauteur 20m :
   "constants": { "g": 9.81, "m": 1, "h": 20 }
 }
 
-Tir oblique v0=20 m/s, θ=45° :
+▼ Tir oblique
 {
   "diagram": {
     "scenario": "projectile",
     "params": { "v0": 20, "theta": 45 },
-    "showAxis": true,
     "objects": [{ "id": "p", "type": "ball", "label": "m", "mass": 0.5, "size": 0.4 }],
     "forces": [{ "id": "P", "target": "p", "type": "weight", "label": "P", "magnitude": "mg" }]
   },
   "constants": { "g": 9.81, "m": 0.5, "v0": 20, "theta": 45 }
 }
 
-Poulie avec deux masses m1=2kg, m2=3kg :
+▼ Poulie simple (Atwood)
 {
   "diagram": {
     "scenario": "pulley",
@@ -94,7 +173,7 @@ Poulie avec deux masses m1=2kg, m2=3kg :
   "constants": { "g": 9.81, "m1": 2, "m2": 3 }
 }
 
-Pendule simple, longueur 1.2m, angle 25° :
+▼ Pendule
 {
   "diagram": {
     "scenario": "pendulum",
@@ -108,12 +187,11 @@ Pendule simple, longueur 1.2m, angle 25° :
   "constants": { "g": 9.81, "m": 0.5, "L": 1.2, "theta": 25 }
 }
 
-Ressort horizontal, k=80 N/m, compression x=0.2m, masse 1kg :
+▼ Ressort horizontal
 {
   "diagram": {
     "scenario": "spring",
     "params": { "k": 80, "x": 0.2, "L": 1.2 },
-    "showAxis": true,
     "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 1, "size": 0.5 }],
     "forces": [
       { "id": "Fr", "target": "block", "type": "spring", "label": "F", "magnitude": "-kx" },
@@ -124,29 +202,45 @@ Ressort horizontal, k=80 N/m, compression x=0.2m, masse 1kg :
   "constants": { "g": 9.81, "m": 1, "k": 80, "x": 0.2, "L": 1.2 }
 }
 
-Mouvement horizontal avec force appliquée F=20N, μ=0.1, m=4kg :
+▼ Mouvement horizontal
 {
   "diagram": {
     "scenario": "horizontal_motion",
     "params": {},
-    "showAxis": true,
     "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 4, "size": 0.6 }],
     "forces": [
-      { "id": "F", "target": "block", "type": "applied", "label": "F", "magnitude": "F", "direction": { "x": 1, "y": 0 }, "value": 20 },
+      { "id": "F", "target": "block", "type": "applied", "label": "F", "direction": { "x": 1, "y": 0 }, "value": 20 },
       { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
       { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" },
-      { "id": "f", "target": "block", "type": "friction", "label": "f", "magnitude": "μN", "orientation": "down_slope" }
+      { "id": "f", "target": "block", "type": "friction", "label": "f", "orientation": "down_slope" }
     ]
   },
   "constants": { "g": 9.81, "m": 4, "mu": 0.1 }
 }
 
-TIMELINE :
-- Type d'étape : "concept", "equation", "substitution", "solve", "diagram", "motion"
-- Chaque étape a un id unique (step_1, step_2...)
-- highlight_elements/highlight_forces : ids pour mettre en valeur visuellement
+▼ Circuit RC
+{
+  "diagram": {
+    "scenario": "circuit",
+    "params": {},
+    "objects": [],
+    "forces": [],
+    "circuit": [
+      { "id": "E", "type": "battery", "label": "E", "value": 12, "unit": "V" },
+      { "id": "R", "type": "resistor", "label": "R", "value": 100, "unit": "Ω" },
+      { "id": "C", "type": "capacitor", "label": "C", "value": 10, "unit": "µF" }
+    ]
+  },
+  "constants": { "E": 12, "R": 100, "C": 0.00001 }
+}
 
-RÈGLE ABSOLUE : Réponds UNIQUEMENT via l'outil parse_physics_exercise. AUCUNE coordonnée pixel.`;
+═══════════════════════════════════════════════════
+RÈGLE ABSOLUE
+═══════════════════════════════════════════════════
+1. Détecte les SYSTÈMES COMBINÉS en priorité (plusieurs objets reliés).
+2. Mets t_ratio sur CHAQUE étape de la timeline.
+3. Pour les étapes "projection", indique projection_target.
+4. Réponds UNIQUEMENT via l'outil parse_physics_exercise. AUCUNE coordonnée pixel.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -174,10 +268,10 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Analyse cet exercice et retourne le plan cognitif sémantique:\n\n${exercise}` },
+          { role: "user", content: `Analyse cet exercice et retourne le plan cognitif sémantique. Lis l'énoncé EN ENTIER avant de choisir le scénario : si plusieurs objets sont reliés, tu DOIS choisir un scénario COMBINÉ (inclined_pulley, etc.) et JAMAIS un scénario simple.\n\n${exercise}` },
         ],
         tools: [
           {
@@ -206,7 +300,7 @@ serve(async (req) => {
                     properties: {
                       scenario: {
                         type: "string",
-                        enum: ["free_fall", "inclined_plane", "projectile", "pulley", "spring", "pendulum", "horizontal_motion", "circuit", "generic"],
+                        enum: ["free_fall", "inclined_plane", "inclined_pulley", "projectile", "pulley", "spring", "pendulum", "horizontal_motion", "circuit", "generic"],
                       },
                       params: {
                         type: "object",
@@ -225,10 +319,6 @@ serve(async (req) => {
                             anchor: { type: "string" },
                             distance: { type: "number" },
                             size: { type: "number" },
-                            position: {
-                              type: "object",
-                              properties: { x: { type: "number" }, y: { type: "number" } },
-                            },
                           },
                           required: ["id", "type"],
                         },
@@ -257,6 +347,20 @@ serve(async (req) => {
                           required: ["id", "target", "type", "label"],
                         },
                       },
+                      circuit: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string" },
+                            type: { type: "string", enum: ["battery", "resistor", "capacitor", "wire"] },
+                            label: { type: "string" },
+                            value: { type: "number" },
+                            unit: { type: "string" },
+                          },
+                          required: ["id", "type"],
+                        },
+                      },
                     },
                     required: ["scenario", "params", "objects", "forces"],
                   },
@@ -266,7 +370,7 @@ serve(async (req) => {
                       type: "object",
                       properties: {
                         id: { type: "string" },
-                        type: { type: "string", enum: ["concept", "equation", "substitution", "solve", "diagram", "motion"] },
+                        type: { type: "string", enum: ["concept", "equation", "substitution", "solve", "diagram", "motion", "projection"] },
                         title: { type: "string" },
                         description: { type: "string" },
                         formula: { type: "string" },
@@ -274,6 +378,8 @@ serve(async (req) => {
                         dependencies: { type: "array", items: { type: "string" } },
                         highlight_elements: { type: "array", items: { type: "string" } },
                         highlight_forces: { type: "array", items: { type: "string" } },
+                        t_ratio: { type: "number", description: "Position dans l'animation, 0 à 1" },
+                        projection_target: { type: "string", description: "ID de l'objet pour la projection" },
                       },
                       required: ["id", "type", "title"],
                     },
