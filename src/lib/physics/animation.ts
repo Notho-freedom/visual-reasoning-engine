@@ -48,14 +48,21 @@ export function defaultDuration(scenario: ScenarioType, params: Record<string, n
     case "pulley": {
       const m1 = constants.m1 ?? 2;
       const m2 = constants.m2 ?? 3;
+      const ropeLen = params.length ?? 3;
       const a = Math.abs((m2 - m1) * g) / (m1 + m2);
-      const dist = 1.5;
-      return Math.max(1, Math.sqrt((2 * dist) / Math.max(a, 0.5)));
+      // Distance max parcourue avant clamp (cohérent avec computePulley: maxDisp = ropeLen * 0.6)
+      const dMax = ropeLen * 0.6;
+      return Math.max(1.2, Math.sqrt((2 * dMax) / Math.max(a, 0.3)));
     }
     case "horizontal_motion": {
-      const a = constants.a ?? 2;
-      const dist = 5;
-      return Math.sqrt((2 * dist) / Math.max(a, 0.5));
+      const a = constants.a ?? params.a ?? 2;
+      const v0 = constants.v0 ?? params.v0 ?? 0;
+      // Distance max avant clamp (cohérent avec computeHorizontalMotion: xClamped à 8.5)
+      const dist = 7;
+      // Résoud d = v0·t + ½·a·t²
+      const aa = Math.max(0.1, Math.abs(a));
+      const t = (-v0 + Math.sqrt(v0 * v0 + 2 * aa * dist)) / aa;
+      return Math.max(1.5, t);
     }
     case "circuit":
       return 4;
