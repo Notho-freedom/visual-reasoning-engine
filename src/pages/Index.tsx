@@ -1,14 +1,18 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Atom, Sparkles, Loader2, ArrowUp, ChevronLeft, ChevronRight, Link2, Unlink, Plus, MessageSquare } from "lucide-react";
+import { Atom, Sparkles, Loader2, ArrowUp, Plus, MessageSquare, History as HistoryIcon, FileDown } from "lucide-react";
 import SceneRenderer from "@/components/SceneRenderer";
-import StepsPanel from "@/components/StepsPanel";
 import ControlsPanel from "@/components/ControlsPanel";
 import AnimationPlayer from "@/components/AnimationPlayer";
+import BlackboardOverlay from "@/components/BlackboardOverlay";
+import ChatPanel, { type ChatMsg } from "@/components/ChatPanel";
+import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
+import EditableStatement from "@/components/EditableStatement";
 import { Button } from "@/components/ui/button";
 import { parseExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
+
 
 const EXAMPLES = [
   { label: "Chute libre", prompt: "Un objet de 2 kg est lâché sans vitesse initiale d'une hauteur de 20 m. Calculer le temps de chute et la vitesse à l'arrivée." },
@@ -30,34 +34,97 @@ const Logo: React.FC = () => (
   </div>
 );
 
+interface HistoryItem extends HistoryEntry {
+  exercise: string;
+  data: CognitiveJSON;
+}
+
 const Index = () => {
   const { toast } = useToast();
   const [exercise, setExercise] = useState("");
+  const [heroInput, setHeroInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [data, setData] = useState<CognitiveJSON | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [constants, setConstants] = useState<Record<string, number>>({});
   const [t, setT] = useState(0);
   const [syncEnabled, setSyncEnabled] = useState(true);
-  const [followUp, setFollowUp] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | undefined>();
+  const [rightTab, setRightTab] = useState<"chat" | "history">("chat");
   const stepClickInFlight = useRef(false);
 
-  const handleSubmit = useCallback(async (text: string) => {
+  const pushHistory = useCallback((label: string, ex: string, d: CognitiveJSON) => {
+    const id = `h-${Date.now()}`;
+    setHistory((prev) => [...prev, { id, label, timestamp: Date.now(), exercise: ex, data: d }]);
+    setCurrentHistoryId(id);
+  }, []);
+
+  const runParse = useCallback(async (text: string, opts: { isFirst?: boolean; chatPrompt?: string } = {}) => {
     setIsLoading(true);
-    setData(null);
-    setCurrentStep(0);
-    setT(0);
     try {
       const result = await parseExercise(text);
       setData(result);
+      setExercise(text);
       setConstants(result.constants ?? {});
-      toast({ title: "Analyse terminée", description: `${result.timeline.length} étapes — ${result.meta.scenario}` });
+      setCurrentStep(0);
+      setT(0);
+      const label = opts.isFirst
+        ? "Énoncé initial"
+        : opts.chatPrompt
+          ? `Modification : ${opts.chatPrompt.slice(0, 60)}`
+          : "Énoncé modifié";
+      pushHistory(label, text, result);
+      if (opts.chatPrompt) {
+        setChatMessages((m) => [
+          ...m,
+          { id: `a-${Date.now()}`, role: "assistant", content: `Schéma mis à jour ✓ — ${result.timeline.length} étapes recalculées.` },
+        ]);
+      }
+      toast({ title: "Schéma généré", description: `${result.timeline.length} étapes — ${result.meta.scenario}` });
     } catch (err) {
       toast({ title: "Erreur", description: err instanceof Error ? err.message : "Impossible d'analyser", variant: "destructive" });
+      if (opts.chatPrompt) {
+        setChatMessages((m) => [...m, { id: `e-${Date.now()}`, role: "assistant", content: "Échec de la mise à jour. Réessayez." }]);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, pushHistory]);
+
+  const handleHeroSubmit = useCallback((text: string) => {
+    setChatMessages([]);
+    setHistory([]);
+    runParse(text, { isFirst: true });
+  }, [runParse]);
+
+  // Chat → fusionne avec l'énoncé existant et regénère
+  const handleChatSend = useCallback(() => {
+    const prompt = chatInput.trim();
+    if (!prompt) return;
+    setChatMessages((m) => [...m, { id: `u-${Date.now()}`, role: "user", content: prompt }]);
+    setChatInput("");
+    const merged = `${exercise}\n\nMODIFICATION DEMANDÉE: ${prompt}`;
+    runParse(merged, { chatPrompt: prompt });
+  }, [chatInput, exercise, runParse]);
+
+  const handleStatementSave = useCallback((newText: string) => {
+    runParse(newText);
+  }, [runParse]);
+
+  const handleRestoreHistory = useCallback((id: string) => {
+    const item = history.find((h) => h.id === id);
+    if (!item) return;
+    setData(item.data);
+    setExercise(item.exercise);
+    setConstants(item.data.constants ?? {});
+    setCurrentStep(0);
+    setT(0);
+    setCurrentHistoryId(id);
+    toast({ title: "Version restaurée" });
+  }, [history, toast]);
 
   const scene = useMemo(() => {
     if (!data) return null;
@@ -79,7 +146,7 @@ const Index = () => {
     if (bestIdx >= 0 && bestIdx !== currentStep) setCurrentStep(bestIdx);
   }, [t, scene, data, syncEnabled, currentStep]);
 
-  const handleStepClick = useCallback((i: number) => {
+  const goToStep = useCallback((i: number) => {
     setCurrentStep(i);
     if (syncEnabled && data && scene) {
       const ratio = data.timeline[i]?.t_ratio;
@@ -93,9 +160,12 @@ const Index = () => {
   const totalSteps = data?.timeline.length || 0;
   const step = data?.timeline[currentStep];
 
-  const newSession = () => { setData(null); setExercise(""); setCurrentStep(0); setT(0); };
+  const newSession = () => {
+    setData(null); setExercise(""); setHeroInput(""); setCurrentStep(0); setT(0);
+    setChatMessages([]); setHistory([]); setCurrentHistoryId(undefined);
+  };
 
-  // ===================== HERO (état vide) =====================
+  // ===================== HERO =====================
   if (!data && !isLoading) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -124,14 +194,13 @@ const Index = () => {
               </p>
             </div>
 
-            {/* Prompt box Lovable-style */}
             <form
-              onSubmit={(e) => { e.preventDefault(); if (exercise.trim()) handleSubmit(exercise.trim()); }}
+              onSubmit={(e) => { e.preventDefault(); if (heroInput.trim()) handleHeroSubmit(heroInput.trim()); }}
               className="bg-card rounded-3xl shadow-elevated border border-border/60 p-2 mt-10 text-left"
             >
               <textarea
-                value={exercise}
-                onChange={(e) => setExercise(e.target.value)}
+                value={heroInput}
+                onChange={(e) => setHeroInput(e.target.value)}
                 placeholder="Décrivez votre exercice de physique..."
                 rows={3}
                 className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
@@ -142,9 +211,8 @@ const Index = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={!exercise.trim()}
+                  disabled={!heroInput.trim()}
                   className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-30 hover:opacity-90 transition shadow-soft"
-                  aria-label="Envoyer"
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>
@@ -155,7 +223,7 @@ const Index = () => {
               {EXAMPLES.map((ex) => (
                 <button
                   key={ex.label}
-                  onClick={() => { setExercise(ex.prompt); handleSubmit(ex.prompt); }}
+                  onClick={() => { setHeroInput(ex.prompt); handleHeroSubmit(ex.prompt); }}
                   className="px-3.5 py-1.5 text-sm bg-card border border-border rounded-full text-foreground/80 hover:text-foreground hover:border-foreground/40 hover:shadow-soft transition-all"
                 >
                   {ex.label}
@@ -168,8 +236,8 @@ const Index = () => {
     );
   }
 
-  // ===================== LOADING =====================
-  if (isLoading) {
+  // ===================== LOADING (initial) =====================
+  if (isLoading && !data) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <header className="h-14 px-6 flex items-center justify-between border-b border-border/60">
@@ -197,61 +265,45 @@ const Index = () => {
             </span>
           )}
         </div>
-        <Button onClick={newSession} variant="default" size="sm" className="rounded-full h-8 px-4 text-xs font-medium">
-          <Plus className="h-3.5 w-3.5 mr-1" /> Nouvel exercice
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="rounded-full h-8 px-3 text-xs" disabled title="Bientôt disponible">
+            <FileDown className="h-3.5 w-3.5 mr-1" /> Exporter PDF
+          </Button>
+          <Button onClick={newSession} variant="default" size="sm" className="rounded-full h-8 px-4 text-xs font-medium">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Nouvel exercice
+          </Button>
+        </div>
       </header>
 
       <div className="flex-1 flex min-h-0">
-        {/* Sidebar gauche : énoncé style chat */}
-        <aside className="w-80 shrink-0 border-r border-border/60 flex flex-col bg-sidebar">
-          <div className="px-5 py-4 border-b border-border/60">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Énoncé</span>
-            </div>
+        {/* Sidebar gauche : énoncé éditable + chat contextuel */}
+        <aside className="w-[340px] shrink-0 border-r border-border/60 flex flex-col bg-sidebar">
+          <div className="px-5 py-3 border-b border-border/60 flex items-center gap-2">
+            <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Énoncé</span>
           </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3">
-            {data && (
-              <div className="rounded-2xl bg-card border border-border/60 px-4 py-3 shadow-soft">
-                <p className="text-sm leading-relaxed text-foreground">{exercise || "Exercice"}</p>
-              </div>
-            )}
+          <div className="px-4 pt-3 pb-2 border-b border-border/60">
+            <EditableStatement text={exercise} onSave={handleStatementSave} disabled={isLoading} />
             <div className="text-[11px] text-muted-foreground px-1 pt-2">
-              {totalSteps} étapes générées · scénario {data?.meta.scenario}
+              {totalSteps} étapes · {data?.meta.scenario}
             </div>
           </div>
-          <div className="p-3 border-t border-border/60">
-            <form
-              onSubmit={(e) => { e.preventDefault(); if (followUp.trim()) { handleSubmit(followUp.trim()); setFollowUp(""); } }}
-              className="bg-card rounded-2xl border border-border p-1.5 shadow-soft"
-            >
-              <textarea
-                value={followUp}
-                onChange={(e) => setFollowUp(e.target.value)}
-                placeholder="Modifier ou poser un autre exercice…"
-                rows={2}
-                className="w-full resize-none bg-transparent px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none"
-              />
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  disabled={!followUp.trim()}
-                  className="h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-30 hover:opacity-90 transition"
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </form>
-          </div>
+          <ChatPanel
+            messages={chatMessages}
+            input={chatInput}
+            onInputChange={setChatInput}
+            onSend={handleChatSend}
+            isLoading={isLoading}
+          />
         </aside>
 
-        {/* Canvas central */}
+        {/* TABLEAU central — étendu */}
         <main className="flex-1 flex flex-col min-w-0 p-6 gap-4 overflow-hidden bg-background">
           {data && scene && (
             <>
-              <div className="flex-1 min-h-0 rounded-2xl overflow-hidden scene-frame">
+              <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden scene-frame">
                 <SceneRenderer scene={scene} step={step} />
+                <BlackboardOverlay step={step} index={currentStep} />
               </div>
 
               <div className="rounded-2xl bg-card border border-border/60 shadow-soft">
@@ -260,6 +312,12 @@ const Index = () => {
                   t={t}
                   onTimeChange={(newT) => { stepClickInFlight.current = false; setT(newT); }}
                   phaseLabel={scene.phaseLabel}
+                  currentStep={currentStep}
+                  totalSteps={totalSteps}
+                  onPrevStep={() => goToStep(Math.max(0, currentStep - 1))}
+                  onNextStep={() => goToStep(Math.min(totalSteps - 1, currentStep + 1))}
+                  syncEnabled={syncEnabled}
+                  onToggleSync={() => setSyncEnabled((s) => !s)}
                 />
               </div>
 
@@ -275,42 +333,19 @@ const Index = () => {
           )}
         </main>
 
-        {/* Sidebar droite : étapes */}
-        <aside className="w-96 shrink-0 border-l border-border/60 flex flex-col bg-sidebar">
-          <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Résolution</span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setSyncEnabled((s) => !s)}
-                className={`h-7 px-2 rounded-full flex items-center gap-1 text-[10px] font-medium transition ${syncEnabled ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground border border-border"}`}
-                title={syncEnabled ? "Synchronisation activée" : "Synchronisation désactivée"}
-              >
-                {syncEnabled ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
-                sync
-              </button>
-              <button
-                onClick={() => handleStepClick(Math.max(0, currentStep - 1))}
-                disabled={currentStep <= 0}
-                className="h-7 w-7 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </button>
-              <span className="text-[10px] font-mono text-muted-foreground tabular-nums px-1">
-                {currentStep + 1}/{totalSteps}
-              </span>
-              <button
-                onClick={() => handleStepClick(Math.min(totalSteps - 1, currentStep + 1))}
-                disabled={currentStep >= totalSteps - 1}
-                className="h-7 w-7 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
+        {/* Sidebar droite : Historique */}
+        <aside className="w-72 shrink-0 border-l border-border/60 flex flex-col bg-sidebar">
+          <div className="px-5 py-3 border-b border-border/60 flex items-center gap-2">
+            <HistoryIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Historique</span>
+            <span className="ml-auto text-[10px] font-mono text-muted-foreground">{history.length}</span>
           </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
-            {data && (
-              <StepsPanel steps={data.timeline} currentStep={currentStep} onStepClick={handleStepClick} />
-            )}
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <HistoryPanel
+              entries={history.map(({ id, label, timestamp }) => ({ id, label, timestamp }))}
+              currentId={currentHistoryId}
+              onRestore={handleRestoreHistory}
+            />
           </div>
         </aside>
       </div>

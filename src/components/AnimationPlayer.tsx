@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Play, Pause, RotateCcw, Gauge } from "lucide-react";
+import { Play, Pause, RotateCcw, Gauge, ChevronLeft, ChevronRight, Link2, Unlink } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 
 interface AnimationPlayerProps {
@@ -7,11 +7,21 @@ interface AnimationPlayerProps {
   t: number;
   onTimeChange: (t: number) => void;
   phaseLabel?: string;
+  // Step navigation extension
+  currentStep?: number;
+  totalSteps?: number;
+  onPrevStep?: () => void;
+  onNextStep?: () => void;
+  syncEnabled?: boolean;
+  onToggleSync?: () => void;
 }
 
 const SPEEDS = [0.25, 0.5, 1, 2];
 
-const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ duration, t, onTimeChange, phaseLabel }) => {
+const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
+  duration, t, onTimeChange, phaseLabel,
+  currentStep, totalSteps, onPrevStep, onNextStep, syncEnabled, onToggleSync,
+}) => {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const lastTickRef = useRef<number | null>(null);
@@ -118,6 +128,38 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ duration, t, onTimeCh
       {phaseLabel && (
         <div className="shrink-0 px-3 py-1 rounded-full bg-secondary">
           <span className="text-[10px] font-medium text-foreground uppercase tracking-wider">{phaseLabel}</span>
+        </div>
+      )}
+
+      {typeof totalSteps === "number" && totalSteps > 0 && (
+        <div className="shrink-0 flex items-center gap-1 pl-3 ml-1 border-l border-border">
+          {onToggleSync && (
+            <button
+              onClick={onToggleSync}
+              className={`h-7 px-2 rounded-full flex items-center gap-1 text-[10px] font-medium transition ${syncEnabled ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground border border-border"}`}
+              title={syncEnabled ? "Synchronisation activée" : "Synchronisation désactivée"}
+            >
+              {syncEnabled ? <Link2 className="h-3 w-3" /> : <Unlink className="h-3 w-3" />}
+              sync
+            </button>
+          )}
+          <button
+            onClick={onPrevStep}
+            disabled={(currentStep ?? 0) <= 0}
+            className="h-7 w-7 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center disabled:opacity-30 transition"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <span className="text-[10px] font-mono text-muted-foreground tabular-nums px-1 min-w-[42px] text-center">
+            {(currentStep ?? 0) + 1}/{totalSteps}
+          </span>
+          <button
+            onClick={onNextStep}
+            disabled={(currentStep ?? 0) >= totalSteps - 1}
+            className="h-7 w-7 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center disabled:opacity-30 transition"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </div>
