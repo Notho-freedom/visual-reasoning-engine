@@ -115,16 +115,7 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step }) => {
         />
       ))}
 
-      {/* Step overlay */}
-      {step && (
-        <g>
-          <rect x={12} y={12} width={Math.min(scene.width - 24, Math.max(180, step.title.length * 7 + 30))} height={step.formula ? 46 : 26} rx={6} fill="hsl(var(--background))" opacity={0.7} />
-          <text x={22} y={30} fill="hsl(var(--foreground))" fontSize={13} fontWeight={600} fontFamily="Inter">{step.title}</text>
-          {step.formula && (
-            <text x={22} y={48} fill="hsl(var(--primary))" fontSize={11} fontFamily="JetBrains Mono">{step.formula}</text>
-          )}
-        </g>
-      )}
+      {/* Step overlay déplacé vers BlackboardOverlay (HTML/typewriter) */}
     </svg>
   );
 };
