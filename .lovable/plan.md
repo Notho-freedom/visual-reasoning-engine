@@ -1,122 +1,168 @@
+## Objectif
 
+Abandonner le thème néon sombre actuel et adopter intégralement le design system de Lovable (lovable.dev), mais appliqué à notre contexte : au lieu de "construire des apps", on "résout des problèmes de physique". Le canvas central affiche les schémas physiques animés au lieu d'une preview d'app.
 
-## Diagnostic des problèmes signalés
+## Identité visuelle Lovable à reproduire
 
-1. **Repère global qui "bouge"** : `makeWorldAxis(vp)` utilise `vp.originX/originY` qui change par scénario → le repère se déplace selon où le solveur place son origine physique. Il faut un repère monde **fixe** en bas-gauche du canvas (ex. `x=30, y=H-30`), indépendant du viewport.
+**Palette (light theme par défaut)**
+- Fond principal : blanc cassé `#FAFAF9` / off-white
+- Surfaces cartes : blanc pur `#FFFFFF`
+- Texte : noir profond `#0A0A0A` / gris foncé
+- Bordures : gris très clair `#E7E5E4`
+- Accent CTA : noir `#000000` (boutons "Get started" style)
+- Gradient signature : rose → violet → bleu (`#FF6B9D → #A855F7 → #3B82F6`) utilisé pour fond hero et accents
 
-2. **Plan incliné — le bloc "monte" puis retombe** : dans `inclinedPlane.ts`, `dStart` vient de `obj.distance` (donné par l'IA, souvent 2.5) mais `sParcouru = ½·a·t²` peut dépasser largement → `dRestant = max(0, ...)` fait sauter le bloc à 0 brutalement. Pire : la durée par défaut est calculée pour `L=5` alors que `dStart=2.5` → le bloc atteint le bas bien avant la fin de l'animation et reste figé. Il faut **caler la durée sur `dStart` réel** et clamper proprement.
+**Typographie**
+- Titres : Inter / sans-serif, très gras (700-800), tracking serré
+- Corps : Inter 400-500
+- Mono : pour valeurs numériques uniquement
+- Abandonner JetBrains Mono comme police principale, garder pour badges techniques
 
-3. **Ressort — le bloc ne touche pas le sol** : dans `computeSpring`, le bloc est centré sur `y=0` mais le sol est à `y=-0.5`. Le bloc flotte de 0.5m au-dessus. Il faut **placer le centre du bloc à `y = sizeM/2`** (pour que sa face inférieure touche le sol à `y=0`) et placer le sol à `y=0`.
+**Composants signature**
+- Hero avec gros titre centré + sous-titre gris + barre de prompt arrondie XL avec ombre douce
+- Boutons noirs arrondis (rounded-full), petits badges pill bleus ("New")
+- Cartes blanches, bordure 1px gris clair, radius `xl` (16px), ombre subtile
+- Inputs grands, bg légèrement teinté, padding généreux
 
-4. **Systèmes combinés non compris** : le prompt IA n'a aucun exemple de "plan incliné + poulie + masse suspendue" ni de scénario `combined`. L'IA tombe forcément sur `inclined_plane` ou `pulley` seul. Il faut introduire un nouveau scénario `inclined_pulley` (et un solveur dédié) + l'enseigner explicitement à l'IA avec l'énoncé exact donné en exemple.
+## Adaptation au contexte physique
 
-5. **Sync timeline ↔ animation** : aucun champ temporel sur les `TimelineStep`. Il faut ajouter `t_anchor?: number` (ou `t_ratio?: 0..1`) → clic sur étape = saute à `t`, et inversement l'étape active suit `t` courant.
+```text
+┌─ Header (blanc, fin) ─────────────────────────────┐
+│ [Logo PhysicsEngine + nom]      [Solutions ▾] [↗] │
+├───────────────────────────────────────────────────┤
+│                                                   │
+│         ╭─── gradient rose/violet/bleu ───╮       │
+│                                                   │
+│             Résolvez n'importe quel                │
+│             problème de physique                   │
+│                                                   │
+│         Décrivez un exercice, voyez le             │
+│         schéma animé et la solution pas-à-pas      │
+│                                                   │
+│      ┌─────────────────────────────────┐          │
+│      │ Décrivez votre exercice de      │          │
+│      │ physique...                     │          │
+│      │                                 │          │
+│      │ [+] [examples ▾]      [Résoudre→]│         │
+│      └─────────────────────────────────┘          │
+│                                                   │
+│       Exemples : [Chute libre] [Plan incliné]     │
+│       [Pendule] [Circuit RC] [Poulie]             │
+│                                                   │
+└───────────────────────────────────────────────────┘
+```
 
-6. **Décomposition projetée des forces** : sur étape de type `projection` (nouveau) ou si `step.type === "equation"` avec axe local visible → dessiner pour chaque force highlighted ses composantes Px'/Py' en pointillés sur le repère local.
+**Après soumission** : transition vers la vue workspace (style éditeur Lovable)
 
-7. **Circuits électriques** : nouveau scénario `circuit` avec layout en boucle rectangulaire (générateur, R, C, fils) + animation de points lumineux qui circulent.
+```text
+┌─ Header blanc ────────────────────────────────────┐
+├──────────────┬────────────────────────┬───────────┤
+│              │                        │           │
+│  Énoncé      │    SCHÉMA ANIMÉ        │ Résolution│
+│  (chat-like) │    (canvas central     │ (timeline │
+│              │     blanc, ombre)      │  d'étapes)│
+│  + textarea  │                        │           │
+│  pour suivi  │   [▶ player en bas]    │           │
+│              │                        │           │
+└──────────────┴────────────────────────┴───────────┘
+```
 
----
+Le panneau gauche imite le panneau chat de l'éditeur Lovable (bulles d'énoncé + bouton "Modifier l'énoncé"). Le centre = "preview" mais c'est notre `SceneRenderer` sur fond blanc avec ombre douce arrondie. Le panneau droit garde les étapes mais re-stylé en cartes blanches.
 
-## Plan d'implémentation
+## Changements techniques
 
-### A. Corrections critiques (priorité 1)
+### 1. Tokens (`src/index.css`)
+Remplacer toutes les variables HSL par la palette claire Lovable :
+- `--background: 60 9% 98%` (off-white)
+- `--foreground: 0 0% 4%`
+- `--card: 0 0% 100%`
+- `--border: 20 6% 90%`
+- `--primary: 0 0% 0%` (boutons noirs)
+- `--muted-foreground: 0 0% 45%`
+- Nouveau : `--gradient-hero: linear-gradient(135deg, #FF6B9D 0%, #A855F7 50%, #3B82F6 100%)`
+- Radius : passer à `0.875rem` (Lovable utilise du rounded-2xl partout)
 
-**A1. Repère monde vraiment fixe**
-- `makeWorldAxis` : ignore `vp.originX/originY`. Utilise `{ x: 30, y: H - 30 }` (constante canvas).
-- Ajouter `width/height` du canvas au paramètre. Le repère monde est toujours en bas-gauche du **SVG**, pas du repère physique.
+Garder un mode dark optionnel mais le default = light.
 
-**A2. Plan incliné — animation correcte**
-- Recaler `dStart` à `slopeLen - 0.5` systématiquement (ignorer ou saturer `obj.distance`).
-- Forcer la durée animation : `duration = sqrt(2·dStart/a)` exactement.
-- Clamper `dRestant` entre `[0.3, dStart]` pour ne jamais sortir.
+### 2. Typo (`src/index.css` + `tailwind.config.ts`)
+- Police par défaut : Inter (déjà importé)
+- Supprimer Space Grotesk (n'est plus dans la mémoire core mais peut traîner)
+- Mettre à jour memory : nouveau design system
 
-**A3. Ressort — bloc collé au sol**
-- Sol à `y=0`, centre du bloc à `y = sizeM/2`. Le ressort va du mur au bord gauche du bloc, à hauteur `y = sizeM/2`.
-- Idem pour `horizontal_motion` : vérifier que le bloc touche le sol.
+### 3. Page d'accueil (`src/pages/Index.tsx`) — refonte complète
+- État vide = hero Lovable-style (centré, gradient en fond, gros titre, sous-titre, gros input avec ombre, boutons exemples en pills)
+- État résolu = workspace 3 colonnes (sidebar gauche énoncé / canvas blanc central / sidebar droite étapes)
+- Header minimaliste blanc avec logo + nom à gauche, actions à droite
+- Bouton "Nouvel exercice" en haut à droite (équivalent du "+ New project")
 
-### B. Systèmes combinés (priorité 1)
+### 4. Canvas central (`SceneRenderer.tsx` + wrapper)
+- Fond : `bg-white` au lieu de gradient sombre
+- Bordure subtile, `rounded-2xl`, `shadow-lg shadow-black/5`
+- La grille de fond passe à gris très clair `#F5F5F4`
+- Les couleurs des renderers (forces, axes, labels) à recalibrer pour fond blanc :
+  - Forces `P` : rouge `#DC2626`
+  - Forces `N`/`T` : bleu `#2563EB`
+  - Frottement `f` : orange `#EA580C`
+  - Axes : noir `#0A0A0A`
+  - Texte labels : noir
+- Tous les `hsl(var(--foreground))` etc. continueront de fonctionner via les nouveaux tokens
 
-**B1. Nouveau scénario `inclined_pulley`**
-- Solveur `src/lib/physics/scenarios/inclinedPulley.ts` qui dessine :
-  - Plan incliné à gauche avec bloc m₁ dessus
-  - Poulie au sommet du plan
-  - Corde du bloc → poulie → masse m₂ pendue verticalement à droite
-- Calcul correct : `a = (m₂g - m₁g·sinα - μ·m₁g·cosα) / (m₁+m₂)` (signé selon sens du mouvement)
-- Animation : m₁ glisse sur la pente, m₂ monte/descend en synchro, corde reste de longueur constante
-- Forces sur m₁ : P, N, T, f (frottement opposé au sens réel du mouvement)
-- Forces sur m₂ : P, T
+### 5. Panneaux latéraux
+- `bg-white`, bordure droite/gauche `border-stone-200`
+- Padding plus généreux (lovable est aéré)
+- Steps en cartes blanches avec hover gris très clair, étape active = bordure noire fine
+- AnimationPlayer : barre claire avec slider noir
 
-**B2. Ajouter au type `ScenarioType`** : `"inclined_pulley"`.
+### 6. Composants à re-styler
+- `AnimationPlayer.tsx` : controls noirs, slider rail gris clair / fill noir
+- `StepsPanel.tsx` : cartes blanches `border-stone-200`, étape active fond `stone-50` + bordure `stone-900`
+- `ControlsPanel.tsx` : sliders style Lovable
+- `ExerciseInput.tsx` (utilisé dans le hero) : grand textarea arrondi avec ombre, bouton CTA noir arrondi
 
-**B3. Étendre le prompt IA**
-- Ajouter un exemple complet `inclined_pulley` avec exactement l'énoncé donné par l'utilisateur (bloc 2kg sur plan 30° + corde + poulie + masse 1kg + μ=0.2).
-- Liste explicite des **systèmes combinés** détectables : `inclined_pulley`, `double_pulley` (Atwood asymétrique), `spring_inclined` (plus tard).
-- Règle de décision claire : "si l'énoncé mentionne 2+ objets reliés → scénario combiné, jamais simple".
-- Passer le modèle à `google/gemini-2.5-pro` pour les énoncés complexes (meilleur reasoning).
+### 7. Renderers couleurs
+Tous les renderers utilisent `hsl(var(--...))` donc basculement automatique. Vérifier juste :
+- `WorldAxisRenderer`, `LocalAxisRenderer` : lisibilité sur blanc OK avec nouveau `--foreground`
+- `CurrentFlowRenderer` : passer `primary` à un bleu vif pour rester visible
+- `VectorRenderer` : couleurs forces hardcodées → introduire palette dédiée dans un fichier `src/lib/physics/colors.ts`
 
-### C. Sync timeline ↔ animation (priorité 2)
+### 8. Header
+- Hauteur 56px, fond blanc, bordure bas `stone-200`
+- Logo : icône `Atom` dans un petit carré gradient (rose→violet→bleu) + texte "PhysicsEngine" bold
+- Bouton noir arrondi à droite : "Nouvel exercice"
 
-**C1. Étendre `TimelineStep`**
-- Ajouter `t_ratio?: number` (0..1) : à quel moment de l'animation l'étape se réfère.
-- L'IA renseigne ces ancres (ex. "à l'impact" → `t_ratio: 1`, "moment initial" → `t_ratio: 0`, "à mi-chute" → `t_ratio: 0.5`).
+### 9. État vide (hero)
+- Fond : gradient pastel blurry (rose/violet/bleu très dilués, façon mesh gradient Lovable)
+- Centré verticalement, max-w-2xl
+- Titre h1 4xl-6xl, sous-titre xl gris
+- Input large arrondi (radius 24px), ombre généreuse
+- Sous l'input : pills cliquables d'exemples au lieu de la longue liste sidebar
+- Pas de sidebar visible avant le premier exercice
 
-**C2. Logique dans `Index.tsx`**
-- Clic sur étape `i` → si `step.t_ratio != null` → `setT(step.t_ratio * scene.duration)`.
-- Pendant la lecture : déduire l'étape active du `t` courant en cherchant la dernière étape avec `t_ratio ≤ t/duration`. La sélectionner automatiquement.
-- Mode "verrouillé" si user scrub manuellement (toggle simple : "suivre l'animation" ON/OFF).
-
-### D. Décomposition projetée des forces (priorité 2)
-
-**D1. Nouveau type d'étape** : `"projection"` dans `TimelineStep.type`.
-
-**D2. Logique de rendu**
-- Si `step.type === "projection"` et l'objet ciblé a un repère local de rotation `θ` → pour chaque force highlighted :
-  - Calculer composantes le long de x' et y' du repère local (rotation inverse).
-  - Dessiner deux flèches en **pointillés** dans la couleur de la force, plus fines, avec labels `Px'`, `Py'`.
-- Composant `ForceProjectionRenderer` qui prend `{ force, localRotationDeg, originPx }`.
-
-### E. Circuits électriques (priorité 3, simple)
-
-**E1. Solveur `circuit.ts`**
-- Layout rectangulaire fixe (boucle). L'IA fournit liste ordonnée : `["battery", "R", "wire", "C", "wire"]`.
-- Placement automatique en grille rectangulaire (4 segments : haut, droite, bas, gauche).
-- Composants déjà dispos : `BatteryRenderer`, `ResistorRenderer`, `CapacitorRenderer`, `WireRenderer`.
-
-**E2. Animation courant**
-- Des points lumineux (cercles) qui se déplacent le long du périmètre de la boucle à vitesse `v ∝ I`.
-- Position des points : paramétrisation par longueur cumulée du périmètre, mod L, avancement = `t · v`.
-
-**E3. Ajout exemple circuit dans le prompt IA**.
-
----
+### 10. Transitions
+- Quand l'utilisateur soumet, fade le hero, slide-in les panneaux workspace
+- `transition-all duration-300`
 
 ## Fichiers impactés
 
 | Fichier | Action |
 |---|---|
-| `src/lib/physics/coords.ts` | `makeWorldAxis` ignore vp, utilise coin canvas fixe |
-| `src/lib/physics/scenarios/inclinedPlane.ts` | Fix `dStart`/durée, clamping correct |
-| `src/lib/physics/scenarios/spring.ts` | Bloc touche le sol |
-| `src/lib/physics/scenarios/horizontal.ts` | Bloc touche le sol (vérif) |
-| `src/lib/physics/scenarios/inclinedPulley.ts` | NOUVEAU — solveur combiné |
-| `src/lib/physics/scenarios/circuit.ts` | NOUVEAU — boucle + courant animé |
-| `src/lib/physics/layoutEngine.ts` | Dispatcher: ajouter `inclined_pulley`, `circuit` |
-| `src/lib/physics/animation.ts` | `defaultDuration` pour nouveaux scénarios |
-| `src/types/cognitive.ts` | `ScenarioType` étendu, `TimelineStep.t_ratio`, type `"projection"` |
-| `src/components/renderers/ForceProjectionRenderer.tsx` | NOUVEAU — composantes pointillées |
-| `src/components/renderers/CurrentFlowRenderer.tsx` | NOUVEAU — points lumineux en boucle |
-| `src/components/SceneRenderer.tsx` | Branche les 2 nouveaux renderers + projection si `step.type==="projection"` |
-| `src/pages/Index.tsx` | Sync clic-étape → t, sync t → étape active, toggle "suivre" |
-| `supabase/functions/parse-exercise/index.ts` | Modèle `gemini-2.5-pro`, prompt enrichi (systèmes combinés + circuits + `t_ratio`), schema étendu |
+| `src/index.css` | Refonte totale tokens (light theme, gradient hero, radius) |
+| `tailwind.config.ts` | Vérifier extension colors, ajouter `stone` palette si besoin |
+| `src/pages/Index.tsx` | Refonte complète (hero + workspace) |
+| `src/components/SceneRenderer.tsx` | Fond blanc, grille claire, couleurs renderers |
+| `src/components/AnimationPlayer.tsx` | Re-style light |
+| `src/components/StepsPanel.tsx` | Cartes blanches |
+| `src/components/ControlsPanel.tsx` | Sliders light |
+| `src/components/ExerciseInput.tsx` | Hero input style Lovable (grand, ombre) |
+| `src/components/renderers/*` | Vérifier contraste sur blanc, ajuster CurrentFlow + VectorRenderer |
+| `src/lib/physics/colors.ts` | NOUVEAU — palette forces centralisée |
+| `mem://design/tokens` | MAJ — nouveau design system |
+| `mem://index.md` | MAJ Core — light theme Lovable, gradient hero |
 
----
+## Hors scope
+- Ne pas toucher à la logique physique (solveurs, animations, sync timeline)
+- Ne pas toucher à l'edge function
+- Pas de mode dark dans cette itération (peut être ajouté plus tard via toggle)
 
-## Scope cette itération
-
-- **Priorité haute** : fixes (repère monde fixe, plan incliné, ressort touche sol) + scénario `inclined_pulley` + amélioration prompt IA pour systèmes combinés (l'énoncé exact donné doit marcher parfaitement).
-- **Priorité moyenne** : sync timeline ↔ animation + projection forces sur repère local.
-- **Priorité basse** : circuits électriques basiques (R + batterie + boucle, sans Kirchhoff complexe).
-
-Hors scope : OCR image, double pendule, RLC complets, mode hypothèse comparatif.
-
+## Résultat attendu
+À l'arrivée, l'utilisateur voit un clone fidèle de lovable.dev avec gradient hero, gros prompt, exemples en pills. Après soumission, workspace blanc épuré 3 colonnes avec le schéma physique animé en plein centre dans une carte blanche avec ombre douce — exactement comme l'éditeur Lovable montre la preview d'app, mais ici on montre un schéma de physique.

@@ -62,17 +62,17 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ duration, t, onTimeCh
   };
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg">
+    <div className="flex items-center gap-3 px-4 py-2.5">
       <button
         onClick={togglePlay}
-        className="h-8 w-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition shrink-0"
+        className="h-9 w-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 transition shrink-0"
         aria-label={playing ? "Pause" : "Play"}
       >
         {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
       </button>
       <button
         onClick={reset}
-        className="h-8 w-8 rounded-md bg-secondary hover:bg-accent text-foreground flex items-center justify-center transition shrink-0"
+        className="h-9 w-9 rounded-full hover:bg-secondary text-foreground flex items-center justify-center transition shrink-0"
         aria-label="Reset"
       >
         <RotateCcw className="h-3.5 w-3.5" />
@@ -104,10 +104,10 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ duration, t, onTimeCh
           <button
             key={s}
             onClick={() => setSpeed(s)}
-            className={`h-7 px-2 rounded-md text-[10px] font-mono transition ${
+            className={`h-7 px-2.5 rounded-full text-[10px] font-medium transition ${
               speed === s
-                ? "bg-primary/15 text-primary border border-primary/30"
-                : "text-muted-foreground hover:text-foreground border border-transparent"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {s}x
@@ -116,8 +116,8 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({ duration, t, onTimeCh
       </div>
 
       {phaseLabel && (
-        <div className="shrink-0 px-2.5 py-1 rounded-md bg-primary/10 border border-primary/20">
-          <span className="text-[10px] font-medium text-primary uppercase tracking-wider">{phaseLabel}</span>
+        <div className="shrink-0 px-3 py-1 rounded-full bg-secondary">
+          <span className="text-[10px] font-medium text-foreground uppercase tracking-wider">{phaseLabel}</span>
         </div>
       )}
     </div>

@@ -31,11 +31,11 @@ const StepsPanel: React.FC<StepsPanelProps> = ({ steps, currentStep, onStepClick
             key={step.id}
             onClick={() => onStepClick(i)}
             className={cn(
-              "w-full text-left rounded-lg px-3 py-2.5 transition-all duration-200 group",
+              "w-full text-left rounded-2xl px-4 py-3 transition-all duration-200 group bg-card",
               isActive
-                ? "bg-primary/10 border border-primary/20"
-                : "hover:bg-secondary/50 border border-transparent",
-              isPast && !isActive && "opacity-60"
+                ? "border border-foreground shadow-soft"
+                : "border border-border hover:border-foreground/30",
+              isPast && !isActive && "opacity-70"
             )}
           >
             <div className="flex items-start gap-2.5">
