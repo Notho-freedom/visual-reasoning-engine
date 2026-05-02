@@ -56,11 +56,14 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step }) => {
     >
       <defs>
         <pattern id="grid" width={40} height={40} patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(var(--border))" strokeWidth={0.5} opacity={0.4} />
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(var(--border))" strokeWidth={0.6} opacity={0.7} />
+        </pattern>
+        <pattern id="grid-fine" width={8} height={8} patternUnits="userSpaceOnUse">
+          <circle cx={1} cy={1} r={0.6} fill="hsl(var(--border))" opacity={0.6} />
         </pattern>
       </defs>
       <rect width={scene.width} height={scene.height} fill="hsl(var(--card))" />
-      <rect width={scene.width} height={scene.height} fill="url(#grid)" />
+      <rect width={scene.width} height={scene.height} fill="url(#grid-fine)" />
 
       {/* Trails (background layer) */}
       {scene.elements.filter((el) => el.type === "trail").map((el) => {
