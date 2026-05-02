@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { parseExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
-import { cn } from "@/lib/utils";
+
 
 const EXAMPLES = [
   { label: "Chute libre", prompt: "Un objet de 2 kg est lâché sans vitesse initiale d'une hauteur de 20 m. Calculer le temps de chute et la vitesse à l'arrivée." },
