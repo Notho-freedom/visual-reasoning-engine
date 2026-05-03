@@ -103,7 +103,7 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step, showForces =
       })}
 
       {/* Forces */}
-      {scene.forces.map((f) => (
+      {showForces && scene.forces.map((f) => (
         <VectorRenderer key={f.id} force={f} highlighted={highlightedForces.has(f.id)} />
       ))}
 
