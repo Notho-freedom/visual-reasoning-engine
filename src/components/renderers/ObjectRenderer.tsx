@@ -27,7 +27,6 @@ const ObjectRenderer: React.FC<Props> = ({ element, highlighted }) => {
           fill={fill}
           stroke={stroke}
           strokeWidth={highlighted ? 2 : 1.5}
-          className="transition-all duration-300"
         />
       ) : (
         <rect
@@ -39,7 +38,6 @@ const ObjectRenderer: React.FC<Props> = ({ element, highlighted }) => {
           fill={fill}
           stroke={stroke}
           strokeWidth={highlighted ? 2 : 1.5}
-          className="transition-all duration-300"
         />
       )}
       {/* Centre de masse */}

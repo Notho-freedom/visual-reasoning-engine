@@ -1,9 +1,13 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { CognitiveJSON } from "@/types/cognitive";
 
-export async function parseExercise(exercise: string): Promise<CognitiveJSON> {
+export async function parseExercise(
+  exercise: string,
+  previousJson?: CognitiveJSON | null,
+  modificationPrompt?: string
+): Promise<CognitiveJSON> {
   const { data, error } = await supabase.functions.invoke("parse-exercise", {
-    body: { exercise },
+    body: { exercise, previousJson: previousJson ?? undefined, modificationPrompt },
   });
 
   if (error) {

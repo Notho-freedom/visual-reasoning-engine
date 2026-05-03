@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Atom, Sparkles, Loader2, ArrowUp, Plus, MessageSquare, History as HistoryIcon, FileDown } from "lucide-react";
+import {
+  Atom, Sparkles, Loader2, ArrowUp, Plus, MessageSquare,
+  History as HistoryIcon, FileDown, X, FolderOpen, Trash2,
+} from "lucide-react";
 import SceneRenderer from "@/components/SceneRenderer";
 import ControlsPanel from "@/components/ControlsPanel";
 import AnimationPlayer from "@/components/AnimationPlayer";
@@ -9,10 +12,18 @@ import ChatPanel, { type ChatMsg } from "@/components/ChatPanel";
 import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
 import EditableStatement from "@/components/EditableStatement";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { parseExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
-
+import {
+  loadCurrent, debouncedSave, archiveCurrent, listSessions, loadSession,
+  deleteSession, clearCurrent, type SessionMeta, type HistoryItemSerial,
+} from "@/lib/persistence";
 
 const EXAMPLES = [
   { label: "Chute libre", prompt: "Un objet de 2 kg est lâché sans vitesse initiale d'une hauteur de 20 m. Calculer le temps de chute et la vitesse à l'arrivée." },
@@ -34,10 +45,7 @@ const Logo: React.FC = () => (
   </div>
 );
 
-interface HistoryItem extends HistoryEntry {
-  exercise: string;
-  data: CognitiveJSON;
-}
+interface HistoryItem extends HistoryEntry { exercise: string; data: CognitiveJSON; }
 
 const Index = () => {
   const { toast } = useToast();
@@ -53,8 +61,46 @@ const Index = () => {
   const [chatInput, setChatInput] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | undefined>();
-  const [rightTab, setRightTab] = useState<"chat" | "history">("chat");
+
+  // UI overlay state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [showForces, setShowForces] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [sessions, setSessions] = useState<SessionMeta[]>(() => listSessions());
+
   const stepClickInFlight = useRef(false);
+  const boardContainerRef = useRef<HTMLDivElement>(null);
+  const restoredRef = useRef(false);
+
+  // Restore session on mount
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    const s = loadCurrent();
+    if (s && s.data) {
+      setData(s.data); setExercise(s.exercise); setConstants(s.constants ?? {});
+      setT(s.t ?? 0); setCurrentStep(s.currentStep ?? 0);
+      setChatMessages(s.chatMessages ?? []);
+      setHistory((s.history ?? []) as HistoryItem[]);
+      setCurrentHistoryId(s.currentHistoryId);
+    }
+  }, []);
+
+  // Persist on changes
+  useEffect(() => {
+    if (!data) return;
+    debouncedSave({ exercise, data, constants, t, currentStep, chatMessages, history: history as HistoryItemSerial[], currentHistoryId });
+  }, [exercise, data, constants, t, currentStep, chatMessages, history, currentHistoryId]);
+
+  // ESC closes panels
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setChatOpen(false); setHistoryOpen(false); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const pushHistory = useCallback((label: string, ex: string, d: CognitiveJSON) => {
     const id = `h-${Date.now()}`;
@@ -62,10 +108,14 @@ const Index = () => {
     setCurrentHistoryId(id);
   }, []);
 
-  const runParse = useCallback(async (text: string, opts: { isFirst?: boolean; chatPrompt?: string } = {}) => {
+  const runParse = useCallback(async (
+    text: string,
+    opts: { isFirst?: boolean; chatPrompt?: string } = {}
+  ) => {
     setIsLoading(true);
     try {
-      const result = await parseExercise(text);
+      const previous = opts.chatPrompt ? data : null;
+      const result = await parseExercise(text, previous, opts.chatPrompt);
       setData(result);
       setExercise(text);
       setConstants(result.constants ?? {});
@@ -74,14 +124,14 @@ const Index = () => {
       const label = opts.isFirst
         ? "Énoncé initial"
         : opts.chatPrompt
-          ? `Modification : ${opts.chatPrompt.slice(0, 60)}`
+          ? `Modif : ${opts.chatPrompt.slice(0, 60)}`
           : "Énoncé modifié";
       pushHistory(label, text, result);
       if (opts.chatPrompt) {
-        setChatMessages((m) => [
-          ...m,
-          { id: `a-${Date.now()}`, role: "assistant", content: `Schéma mis à jour ✓ — ${result.timeline.length} étapes recalculées.` },
-        ]);
+        const diff = previous
+          ? `Schéma mis à jour ✓ — ${previous.diagram.objects.length}→${result.diagram.objects.length} objets, ${result.timeline.length} étapes (${result.meta.scenario}).`
+          : `Schéma mis à jour ✓ — ${result.timeline.length} étapes.`;
+        setChatMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: diff }]);
       }
       toast({ title: "Schéma généré", description: `${result.timeline.length} étapes — ${result.meta.scenario}` });
     } catch (err) {
@@ -92,37 +142,29 @@ const Index = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [toast, pushHistory]);
+  }, [toast, pushHistory, data]);
 
   const handleHeroSubmit = useCallback((text: string) => {
-    setChatMessages([]);
-    setHistory([]);
+    setChatMessages([]); setHistory([]);
     runParse(text, { isFirst: true });
   }, [runParse]);
 
-  // Chat → fusionne avec l'énoncé existant et regénère
   const handleChatSend = useCallback(() => {
     const prompt = chatInput.trim();
     if (!prompt) return;
     setChatMessages((m) => [...m, { id: `u-${Date.now()}`, role: "user", content: prompt }]);
     setChatInput("");
-    const merged = `${exercise}\n\nMODIFICATION DEMANDÉE: ${prompt}`;
-    runParse(merged, { chatPrompt: prompt });
+    runParse(exercise, { chatPrompt: prompt });
   }, [chatInput, exercise, runParse]);
 
-  const handleStatementSave = useCallback((newText: string) => {
-    runParse(newText);
-  }, [runParse]);
+  const handleStatementSave = useCallback((newText: string) => { runParse(newText); }, [runParse]);
 
   const handleRestoreHistory = useCallback((id: string) => {
     const item = history.find((h) => h.id === id);
     if (!item) return;
-    setData(item.data);
-    setExercise(item.exercise);
+    setData(item.data); setExercise(item.exercise);
     setConstants(item.data.constants ?? {});
-    setCurrentStep(0);
-    setT(0);
-    setCurrentHistoryId(id);
+    setCurrentStep(0); setT(0); setCurrentHistoryId(id);
     toast({ title: "Version restaurée" });
   }, [history, toast]);
 
@@ -161,19 +203,99 @@ const Index = () => {
   const step = data?.timeline[currentStep];
 
   const newSession = () => {
+    // Archive then reset
+    if (data) {
+      archiveCurrent({
+        exercise, data, constants, t, currentStep, chatMessages,
+        history: history as HistoryItemSerial[], currentHistoryId, updatedAt: Date.now(),
+      });
+      setSessions(listSessions());
+    }
+    clearCurrent();
     setData(null); setExercise(""); setHeroInput(""); setCurrentStep(0); setT(0);
     setChatMessages([]); setHistory([]); setCurrentHistoryId(undefined);
+    setChatOpen(false); setHistoryOpen(false);
+  };
+
+  const handleLoadSession = (id: string) => {
+    const s = loadSession(id);
+    if (!s || !s.data) return;
+    setData(s.data); setExercise(s.exercise); setConstants(s.constants ?? {});
+    setT(s.t ?? 0); setCurrentStep(s.currentStep ?? 0);
+    setChatMessages(s.chatMessages ?? []);
+    setHistory((s.history ?? []) as HistoryItem[]);
+    setCurrentHistoryId(s.currentHistoryId);
+    toast({ title: "Session chargée" });
+  };
+  const handleDeleteSession = (id: string) => {
+    deleteSession(id); setSessions(listSessions());
+  };
+
+  // Toolbar handlers
+  const handleFullscreen = () => {
+    const el = boardContainerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) document.exitFullscreen();
+    else el.requestFullscreen?.();
+  };
+  const handleScreenshot = () => {
+    const svg = boardContainerRef.current?.querySelector("svg");
+    if (!svg) return;
+    const xml = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([xml], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `physics-${Date.now()}.svg`; a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: "Capture exportée" });
+  };
+  const handleCopyStep = () => {
+    if (!step) return;
+    const lines = [
+      `# Étape ${currentStep + 1} : ${step.title}`,
+      step.formula && `\\[ ${step.formula} \\]`,
+      step.description,
+      step.result && Object.entries(step.result).map(([k, v]) => `- ${k} = ${v}`).join("\n"),
+    ].filter(Boolean).join("\n\n");
+    navigator.clipboard?.writeText(lines);
   };
 
   // ===================== HERO =====================
   if (!data && !isLoading) {
+    const hasSessions = sessions.length > 0;
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <header className="h-14 px-6 flex items-center justify-between border-b border-border/60 bg-background/80 backdrop-blur-sm">
           <Logo />
           <div className="flex items-center gap-2">
-            <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition px-3 py-1.5">Exemples</a>
-            <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition px-3 py-1.5">Documentation</a>
+            {hasSessions && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="rounded-full h-8 px-3 text-xs">
+                    <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
+                    Reprendre ({sessions.length})
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80">
+                  <DropdownMenuLabel className="text-xs">Sessions sauvegardées</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {sessions.map((s) => (
+                    <div key={s.id} className="flex items-start gap-1 px-1">
+                      <DropdownMenuItem className="flex-1 cursor-pointer" onClick={() => handleLoadSession(s.id)}>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium truncate">{s.title}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">{s.preview}</div>
+                        </div>
+                      </DropdownMenuItem>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSession(s.id); }}
+                        className="h-7 w-7 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex items-center justify-center"
+                      ><Trash2 className="h-3 w-3" /></button>
+                    </div>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </header>
 
@@ -183,7 +305,6 @@ const Index = () => {
               <Sparkles className="h-3 w-3" />
               <span>Propulsé par l'IA</span>
             </div>
-
             <div className="space-y-4">
               <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.05]">
                 Résolvez n'importe quel<br />
@@ -193,7 +314,6 @@ const Index = () => {
                 Décrivez un exercice — obtenez un schéma animé exact et la résolution pas à pas.
               </p>
             </div>
-
             <form
               onSubmit={(e) => { e.preventDefault(); if (heroInput.trim()) handleHeroSubmit(heroInput.trim()); }}
               className="bg-card rounded-3xl shadow-elevated border border-border/60 p-2 mt-10 text-left"
@@ -218,7 +338,6 @@ const Index = () => {
                 </button>
               </div>
             </form>
-
             <div className="flex flex-wrap gap-2 justify-center pt-4">
               {EXAMPLES.map((ex) => (
                 <button
@@ -255,101 +374,188 @@ const Index = () => {
 
   // ===================== WORKSPACE =====================
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
-      <header className="h-14 shrink-0 px-6 flex items-center justify-between border-b border-border/60 bg-background">
-        <div className="flex items-center gap-4">
-          <Logo />
-          {data && (
-            <span className="text-[11px] font-medium text-muted-foreground px-2.5 py-1 rounded-full bg-secondary">
-              {data.meta.domain} · {data.meta.scenario}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="rounded-full h-8 px-3 text-xs" disabled title="Bientôt disponible">
-            <FileDown className="h-3.5 w-3.5 mr-1" /> Exporter PDF
-          </Button>
-          <Button onClick={newSession} variant="default" size="sm" className="rounded-full h-8 px-4 text-xs font-medium">
-            <Plus className="h-3.5 w-3.5 mr-1" /> Nouvel exercice
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex-1 flex min-h-0">
-        {/* Sidebar gauche : énoncé éditable + chat contextuel */}
-        <aside className="w-[340px] shrink-0 border-r border-border/60 flex flex-col bg-sidebar">
-          <div className="px-5 py-3 border-b border-border/60 flex items-center gap-2">
-            <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Énoncé</span>
+    <TooltipProvider delayDuration={200}>
+      <div className="h-screen flex flex-col bg-background overflow-hidden">
+        <header className="h-14 shrink-0 px-6 flex items-center justify-between border-b border-border/60 bg-background z-30">
+          <div className="flex items-center gap-4">
+            <Logo />
+            {data && (
+              <span className="text-[11px] font-medium text-muted-foreground px-2.5 py-1 rounded-full bg-secondary">
+                {data.meta.domain} · {data.meta.scenario}
+              </span>
+            )}
           </div>
-          <div className="px-4 pt-3 pb-2 border-b border-border/60">
-            <EditableStatement text={exercise} onSave={handleStatementSave} disabled={isLoading} />
-            <div className="text-[11px] text-muted-foreground px-1 pt-2">
-              {totalSteps} étapes · {data?.meta.scenario}
-            </div>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setChatOpen(o => !o); setHistoryOpen(false); }}
+                  className={`h-8 w-8 rounded-full flex items-center justify-center transition ${
+                    chatOpen ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:text-foreground hover:bg-secondary"
+                  }`}
+                  aria-label="Chat"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">Chat & énoncé</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => { setHistoryOpen(o => !o); setChatOpen(false); }}
+                  className={`relative h-8 w-8 rounded-full flex items-center justify-center transition ${
+                    historyOpen ? "bg-primary text-primary-foreground" : "text-foreground/70 hover:text-foreground hover:bg-secondary"
+                  }`}
+                  aria-label="Historique"
+                >
+                  <HistoryIcon className="h-4 w-4" />
+                  {history.length > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-foreground text-background text-[9px] font-mono flex items-center justify-center">
+                      {history.length}
+                    </span>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-[10px]">Historique des versions</TooltipContent>
+            </Tooltip>
+            <div className="w-px h-6 bg-border mx-1" />
+            <Button variant="outline" size="sm" className="rounded-full h-8 px-3 text-xs" disabled title="Bientôt disponible">
+              <FileDown className="h-3.5 w-3.5 mr-1" /> Exporter PDF
+            </Button>
+            <Button onClick={newSession} variant="default" size="sm" className="rounded-full h-8 px-4 text-xs font-medium">
+              <Plus className="h-3.5 w-3.5 mr-1" /> Nouvel exercice
+            </Button>
           </div>
-          <ChatPanel
-            messages={chatMessages}
-            input={chatInput}
-            onInputChange={setChatInput}
-            onSend={handleChatSend}
-            isLoading={isLoading}
-          />
-        </aside>
+        </header>
 
-        {/* TABLEAU central — étendu */}
-        <main className="flex-1 flex flex-col min-w-0 p-6 gap-4 overflow-hidden bg-background">
-          {data && scene && (
-            <>
-              <div className="relative flex-1 min-h-0 rounded-2xl overflow-hidden scene-frame">
-                <SceneRenderer scene={scene} step={step} />
-                <BlackboardOverlay step={step} index={currentStep} />
-              </div>
+        <div className="flex-1 flex min-h-0 relative">
+          {/* TABLEAU plein écran + toolbar */}
+          <main className="flex-1 flex flex-col min-w-0 p-6 gap-3 overflow-hidden bg-background">
+            {data && scene && (
+              <>
+                <div
+                  ref={boardContainerRef}
+                  className="relative flex-1 min-h-0 rounded-2xl overflow-hidden scene-frame"
+                >
+                  <div
+                    className="absolute inset-0 origin-center"
+                    style={{ transform: `scale(${zoom})`, transition: "transform 200ms ease" }}
+                  >
+                    <SceneRenderer scene={scene} step={step} showForces={showForces} zoom={zoom} />
+                  </div>
+                  <BlackboardOverlay step={step} index={currentStep} resetKey={data.meta.title + (history[0]?.id ?? "")} />
+                </div>
 
-              <div className="rounded-2xl bg-card border border-border/60 shadow-soft">
-                <AnimationPlayer
-                  duration={scene.duration ?? 3}
-                  t={t}
-                  onTimeChange={(newT) => { stepClickInFlight.current = false; setT(newT); }}
-                  phaseLabel={scene.phaseLabel}
-                  currentStep={currentStep}
-                  totalSteps={totalSteps}
-                  onPrevStep={() => goToStep(Math.max(0, currentStep - 1))}
-                  onNextStep={() => goToStep(Math.min(totalSteps - 1, currentStep + 1))}
-                  syncEnabled={syncEnabled}
-                  onToggleSync={() => setSyncEnabled((s) => !s)}
-                />
-              </div>
-
-              {Object.keys(constants).length > 0 && (
-                <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-soft">
-                  <ControlsPanel
-                    constants={constants}
-                    onConstantChange={(k, v) => setConstants((prev) => ({ ...prev, [k]: v }))}
+                <div className="rounded-2xl bg-card border border-border/60 shadow-soft">
+                  <AnimationPlayer
+                    duration={scene.duration ?? 3}
+                    t={t}
+                    onTimeChange={(newT) => { stepClickInFlight.current = false; setT(newT); }}
+                    phaseLabel={scene.phaseLabel}
+                    currentStep={currentStep}
+                    totalSteps={totalSteps}
+                    onPrevStep={() => goToStep(Math.max(0, currentStep - 1))}
+                    onNextStep={() => goToStep(Math.min(totalSteps - 1, currentStep + 1))}
+                    syncEnabled={syncEnabled}
+                    onToggleSync={() => setSyncEnabled((s) => !s)}
+                    onFullscreen={handleFullscreen}
+                    onScreenshot={handleScreenshot}
+                    showForces={showForces}
+                    onToggleForces={() => setShowForces(s => !s)}
+                    zoom={zoom}
+                    onZoomChange={setZoom}
+                    onCopyStep={handleCopyStep}
                   />
                 </div>
-              )}
+
+                {Object.keys(constants).length > 0 && (
+                  <div className="rounded-2xl border border-border/60 bg-card px-5 py-3 shadow-soft">
+                    <ControlsPanel
+                      constants={constants}
+                      onConstantChange={(k, v) => setConstants((prev) => ({ ...prev, [k]: v }))}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+
+          {/* Overlay panel : Chat (gauche) */}
+          {chatOpen && (
+            <>
+              <div className="absolute inset-0 z-10 bg-foreground/5" onClick={() => setChatOpen(false)} />
+              <aside className="absolute top-0 left-0 bottom-0 w-[380px] z-20 bg-sidebar border-r border-border/60 shadow-elevated flex flex-col animate-slide-in-right" style={{ animationDirection: "reverse" }}>
+                <div className="px-5 h-12 shrink-0 border-b border-border/60 flex items-center gap-2">
+                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Énoncé & Chat</span>
+                  <button onClick={() => setChatOpen(false)} className="ml-auto h-7 w-7 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="px-4 pt-3 pb-2 border-b border-border/60">
+                  <EditableStatement text={exercise} onSave={handleStatementSave} disabled={isLoading} />
+                  <div className="text-[11px] text-muted-foreground px-1 pt-2">
+                    {totalSteps} étapes · {data?.meta.scenario}
+                  </div>
+                </div>
+                <ChatPanel
+                  messages={chatMessages}
+                  input={chatInput}
+                  onInputChange={setChatInput}
+                  onSend={handleChatSend}
+                  isLoading={isLoading}
+                />
+              </aside>
             </>
           )}
-        </main>
 
-        {/* Sidebar droite : Historique */}
-        <aside className="w-72 shrink-0 border-l border-border/60 flex flex-col bg-sidebar">
-          <div className="px-5 py-3 border-b border-border/60 flex items-center gap-2">
-            <HistoryIcon className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Historique</span>
-            <span className="ml-auto text-[10px] font-mono text-muted-foreground">{history.length}</span>
-          </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin">
-            <HistoryPanel
-              entries={history.map(({ id, label, timestamp }) => ({ id, label, timestamp }))}
-              currentId={currentHistoryId}
-              onRestore={handleRestoreHistory}
-            />
-          </div>
-        </aside>
+          {/* Overlay panel : Historique (droite) */}
+          {historyOpen && (
+            <>
+              <div className="absolute inset-0 z-10 bg-foreground/5" onClick={() => setHistoryOpen(false)} />
+              <aside className="absolute top-0 right-0 bottom-0 w-72 z-20 bg-sidebar border-l border-border/60 shadow-elevated flex flex-col animate-slide-in-right">
+                <div className="px-5 h-12 shrink-0 border-b border-border/60 flex items-center gap-2">
+                  <HistoryIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Historique</span>
+                  <span className="text-[10px] font-mono text-muted-foreground">{history.length}</span>
+                  <button onClick={() => setHistoryOpen(false)} className="ml-auto h-7 w-7 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto scrollbar-thin">
+                  <HistoryPanel
+                    entries={history.map(({ id, label, timestamp }) => ({ id, label, timestamp }))}
+                    currentId={currentHistoryId}
+                    onRestore={handleRestoreHistory}
+                  />
+                </div>
+                {sessions.length > 0 && (
+                  <div className="border-t border-border/60 p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5 px-1">Sessions sauvegardées</div>
+                    <div className="space-y-1 max-h-40 overflow-y-auto scrollbar-thin">
+                      {sessions.map((s) => (
+                        <div key={s.id} className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleLoadSession(s.id)}
+                            className="flex-1 text-left rounded-lg px-2 py-1.5 hover:bg-secondary text-xs truncate"
+                            title={s.preview}
+                          >{s.title}</button>
+                          <button
+                            onClick={() => handleDeleteSession(s.id)}
+                            className="h-7 w-7 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive flex items-center justify-center"
+                          ><Trash2 className="h-3 w-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </aside>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 };
 
