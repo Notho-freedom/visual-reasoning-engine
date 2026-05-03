@@ -248,7 +248,7 @@ serve(async (req) => {
   }
 
   try {
-    const { exercise } = await req.json();
+    const { exercise, previousJson, modificationPrompt } = await req.json();
     if (!exercise || typeof exercise !== "string") {
       return new Response(
         JSON.stringify({ error: "Le champ 'exercise' est requis" }),
@@ -261,6 +261,11 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    const isModification = !!previousJson && !!modificationPrompt;
+    const userMessage = isModification
+      ? `Tu reçois un schéma cognitif EXISTANT et une instruction de MODIFICATION de l'utilisateur.\n\nÉNONCÉ ORIGINAL :\n${exercise}\n\nSCHÉMA EXISTANT (JSON cognitif) :\n${JSON.stringify(previousJson, null, 2)}\n\nMODIFICATION DEMANDÉE :\n${modificationPrompt}\n\nRENVOIE LE SCHÉMA COMPLET MIS À JOUR (pas un patch). Conserve la question d'origine, intègre les nouveaux éléments (objets, forces, composants), recalcule la timeline si la physique change, ajuste constants/params en conséquence. Si la modification ajoute un solide, le scénario peut basculer (ex: pulley → inclined_pulley). Choisis toujours le scénario le plus adapté à la situation finale.`
+      : `Analyse cet exercice et retourne le plan cognitif sémantique. Lis l'énoncé EN ENTIER avant de choisir le scénario : si plusieurs objets sont reliés, tu DOIS choisir un scénario COMBINÉ (inclined_pulley, etc.) et JAMAIS un scénario simple.\n\n${exercise}`;
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -271,7 +276,7 @@ serve(async (req) => {
         model: "google/gemini-2.5-pro",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Analyse cet exercice et retourne le plan cognitif sémantique. Lis l'énoncé EN ENTIER avant de choisir le scénario : si plusieurs objets sont reliés, tu DOIS choisir un scénario COMBINÉ (inclined_pulley, etc.) et JAMAIS un scénario simple.\n\n${exercise}` },
+          { role: "user", content: userMessage },
         ],
         tools: [
           {
