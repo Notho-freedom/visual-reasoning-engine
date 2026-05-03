@@ -25,9 +25,11 @@ import ForceProjectionRenderer from "./renderers/ForceProjectionRenderer";
 interface SceneRendererProps {
   scene: ResolvedScene;
   step?: TimelineStep;
+  showForces?: boolean;
+  zoom?: number;
 }
 
-const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step }) => {
+const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step, showForces = true, zoom = 1 }) => {
   const highlightedElements = new Set(step?.highlight_elements ?? []);
   const highlightedForces = new Set(step?.highlight_forces ?? []);
 
