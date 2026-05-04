@@ -17,6 +17,7 @@ import {
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { parseExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
@@ -438,13 +439,30 @@ const Index = () => {
                   ref={boardContainerRef}
                   className="relative flex-1 min-h-0 rounded-2xl overflow-hidden scene-frame"
                 >
-                  <div
-                    className="absolute inset-0 origin-center"
-                    style={{ transform: `scale(${zoom})`, transition: "transform 200ms ease" }}
-                  >
-                    <SceneRenderer scene={scene} step={step} showForces={showForces} zoom={zoom} />
-                  </div>
-                  <BlackboardOverlay step={step} index={currentStep} resetKey={data.meta.title + (history[0]?.id ?? "")} />
+                  <ResizablePanelGroup direction="horizontal" className="h-full w-full">
+                    {/* Zone EXPLICATIONS (gauche) */}
+                    <ResizablePanel defaultSize={40} minSize={20} maxSize={70} className="relative bg-card">
+                      <div className="absolute top-3 left-4 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-mono pointer-events-none z-10">
+                        Résolution
+                      </div>
+                      <BlackboardOverlay step={step} index={currentStep} resetKey={data.meta.title + (history[0]?.id ?? "")} />
+                    </ResizablePanel>
+
+                    <ResizableHandle className="w-px bg-border/60 hover:bg-primary/40 hover:w-[2px] transition-all data-[resize-handle-state=drag]:bg-primary/60 data-[resize-handle-state=drag]:w-[2px]" />
+
+                    {/* Zone SCHÉMA (droite) */}
+                    <ResizablePanel defaultSize={60} minSize={30} className="relative bg-card overflow-hidden">
+                      <div className="absolute top-3 right-4 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-mono pointer-events-none z-10">
+                        Schéma
+                      </div>
+                      <div
+                        className="absolute inset-0 origin-center"
+                        style={{ transform: `scale(${zoom})`, transition: "transform 200ms ease" }}
+                      >
+                        <SceneRenderer scene={scene} step={step} showForces={showForces} zoom={zoom} />
+                      </div>
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
                 </div>
 
                 <div className="rounded-2xl bg-card border border-border/60 shadow-soft">
