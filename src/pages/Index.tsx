@@ -17,6 +17,7 @@ import {
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { parseExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
