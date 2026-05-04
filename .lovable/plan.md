@@ -1,112 +1,61 @@
+## Objectif
 
-# Studio "tableau plein écran" + sync animation + persistance
+Ajouter un **overlay flottant "Paramètres"** ouvrable depuis la toolbar (icône Sliders). Il liste les paramètres détectés dans l'énoncé (masse, longueur, angle, gravité, k, R, U, …) avec des sliders + champs numériques. Toute modification est appliquée **en temps réel** sur le schéma et sur les valeurs calculées dans les étapes de résolution.
 
-## 1. Layout : panels en overlay (toggleable)
+## Contexte technique
 
-Le tableau central devient l'élément principal. Chat et Historique deviennent des panneaux flottants qu'on ouvre/ferme via icônes dans le header.
+Tout est déjà en place côté données :
+- `data.constants` est extrait par l'IA (`g`, `m`, `L`, `theta`, `k`, …).
+- `Index.tsx` stocke `constants` dans un state, et `scene = useMemo(() => computeLayout({...data, constants}, t), [data, constants, t])`.
+- `ControlsPanel.tsx` existe déjà avec sliders + métadonnées (label, unité, min/max, step) pour ~16 paramètres physiques courants.
+- Tous les scénarios (`pendulum.ts`, etc.) lisent `constants.g`, `constants.L`, `constants.m`… → re-render instantané.
 
-**Header** (ajouts) :
-- Bouton `MessageSquare` → toggle panel Chat (gauche, slide-in)
-- Bouton `History` → toggle panel Historique (droite, slide-in)
-- Bouton `Settings` → menu options (sync, vitesse typewriter, thème tableau, reset, …)
-- Compteur historique en badge sur l'icône
+Manque uniquement : exposer ce panneau dans le workspace + un mécanisme pour recalculer les valeurs des étapes (`step.result`, `step.formula`) en temps réel.
 
-**Panels** :
-- `ChatPanel` rendu en `<aside>` flottant `absolute top-14 left-0 bottom-0 w-[360px]` avec `animate-slide-in-right` (inversé), backdrop `bg-sidebar/95 backdrop-blur` + `shadow-elevated`. Contient l'énoncé éditable en haut + chat en dessous.
-- `HistoryPanel` symétrique à droite.
-- Clic en dehors ou re-clic sur l'icône → ferme.
-- État `chatOpen`/`historyOpen` dans `Index.tsx`. Par défaut **fermés**, l'utilisateur voit donc `[ tableau plein écran + toolbar ]`.
+## Plan d'implémentation
 
-## 2. Blackboard cumulatif sans bordure
+### 1. Nouvel overlay `ParamsOverlay.tsx`
 
-Refonte de `BlackboardOverlay.tsx` :
-- Plus de carte avec bordure/ombre. Le composant est un `<div>` `absolute inset-0 p-8 pointer-events-none` qui écrit directement sur le canvas.
-- Police `JetBrains Mono`, couleur `text-foreground/85`, taille ~14px, leading relaxed.
-- **Cumulatif** : on garde un `useRef<TimelineStep[]>` des étapes déjà écrites. Quand `currentStep` change vers une étape jamais écrite → on l'append. Si on revient en arrière (sync) → on n'efface pas, on highlight la ligne courante en gras.
-- **Typewriter par étape** : nouvelle étape ajoutée → typewriter sur ses lignes uniquement (titre, formule, résultats), les anciennes restent statiques. Vitesse configurable (défaut 80 cps) via prop / settings menu.
-- **Auto-scroll vertical** : quand le contenu dépasse la hauteur de la zone (mesurée via `ResizeObserver`), on décale les anciennes lignes vers le haut (`transform: translateY(-Δ)` avec transition douce) pour libérer de la place en bas. Pas de scrollbar visible : c'est un défilement automatique. Si on doit vraiment effacer (très long), on retire les premières lignes une fois qu'elles sont sorties depuis assez longtemps.
-- Format des lignes :
-  ```
-  ─── Étape 2 · Équation ───
-    ΣF = m·a
-    Description courte ici
-    a = 2.45 m/s²
-  ```
-- Reset complet du buffer quand `data` change (nouvel exercice ou modification depuis chat).
+- Petit panneau flottant ancré en haut-droite de la zone canvas (≈ 320px de large), draggable optionnel.
+- Header : titre "Paramètres" + bouton fermer.
+- Corps : réutilise `ControlsPanel` (déjà fonctionnel), enrichi avec :
+  - Champ numérique éditable à côté de chaque slider (saisie précise).
+  - Bouton "Réinitialiser" qui restaure `data.constants` initial.
+  - Indicateur visuel discret (point coloré) sur les paramètres modifiés vs. originaux.
+- Animation slide-in depuis la droite, fond `bg-card/95 backdrop-blur` + `shadow-elevated`, fermable par Échap.
 
-## 3. Synchronisation solides ↔ forces
+### 2. Intégration dans la toolbar (`AnimationPlayer.tsx`)
 
-Audit ciblé de chaque scénario : les forces utilisent les centres calculés en fonction de `frame.t`, mais certains **éléments visuels** (notamment `local_axis`, `world_axis` ou positions de blocs) doivent suivre la même position que les forces.
+- Ajout d'une icône **`Sliders` (lucide)** dans le groupe d'outils à droite, avec tooltip "Paramètres".
+- Badge numérique discret affichant le nombre de paramètres détectés (ex : "5").
+- Active state quand l'overlay est ouvert.
+- Nouvelles props : `paramsOpen`, `onToggleParams`, `paramsCount`.
 
-Vérifications + corrections :
-- **`pulley.ts`** : `c1`, `c2` recalculés par frame ✓ — déjà OK. Vérifier que `ObjectRenderer` n'utilise pas une position cachée.
-- **`inclinedPulley.ts`**, **`spring.ts`**, **`pendulum.ts`**, **`projectile.ts`**, **`freeFall.ts`**, **`horizontal.ts`**, **`inclinedPlane.ts`** : passer en revue et s'assurer que le `position` de chaque `block`/`ball`/`local_axis` est calculé à partir de la **même variable** que les ancres de force et les cordes.
-- **Cause racine probable** : dans `ObjectRenderer`, vérifier qu'il n'y a pas de mémoïsation/clé qui empêche le re-render quand la position change. Ajouter `key={el.id}` est déjà fait au niveau parent. Suspect principal : un éventuel `React.memo` qui ignore le changement de `position` (objet) — passer en `memo` avec comparateur explicite ou retirer.
-- Diagnostic : ajouter un log temporaire si besoin, mais le plus probable est qu'`ObjectRenderer` lit `element.position` à un seul moment. À auditer puis fix.
+### 3. State + câblage dans `Index.tsx`
 
-## 4. Toolbar étoffée (sous le tableau, pleine largeur)
+- `const [paramsOpen, setParamsOpen] = useState(false)`.
+- `const initialConstants = useRef<Record<string, number>>({})` rempli quand `data` change pour permettre le reset.
+- L'overlay est rendu en absolu au-dessus de la colonne droite (`SceneRenderer`).
+- `onConstantChange` modifie déjà `constants` → `useMemo` recalcule la scène → re-render instantané. **Aucune latence, pas d'appel IA.**
 
-Ajouts à `AnimationPlayer` (ou wrapper) :
-- Boutons existants (play/pause/reset/sync/prev/next/speed/phase) **conservés**.
-- **Nouveaux** :
-  - `Maximize` → fullscreen API sur le conteneur tableau
-  - `Camera` → screenshot SVG → PNG (canvas conversion) + download
-  - `Eye` toggles : afficher/masquer forces, repère monde, repères locaux, grille (props passées à `SceneRenderer`)
-  - `Type` → ouvre popover réglages typewriter (vitesse, mode cumul/effacer, taille police)
-  - `Layers` → menu zoom canvas (50/75/100/125/150 %)
-  - `Copy` → copie le step courant en LaTeX dans le presse-papier
-- Densité réduite : icônes en 7×7, séparateurs verticaux entre groupes.
+### 4. Recalcul en temps réel des résultats numériques
 
-## 5. Chat → modification fiable du schéma
+`step.result` et `step.formula` viennent de l'IA et contiennent des valeurs figées (ex : `T = 2.46s`). Pour qu'ils suivent les sliders :
 
-Actuellement `handleChatSend` concatène l'énoncé original avec `MODIFICATION DEMANDÉE: …`. Améliorations :
-- Côté front : envoyer aussi le `CognitiveJSON` actuel à l'edge function (champ optionnel `previousJson`) pour que l'IA modifie au lieu de repartir de zéro.
-- Côté `supabase/functions/parse-exercise/index.ts` : si `previousJson` est fourni, ajouter au prompt système :
-  > "Tu reçois un schéma cognitif existant et une instruction de modification. Renvoie le **schéma complet mis à jour** (pas un patch), en conservant la question d'origine et en intégrant les nouveaux éléments. Recalcule la timeline si la physique change."
-- Le scénario peut basculer (ex : `pulley` → `pulley` avec 2 poulies, ou nouveau scénario `multi_pulley` plus tard) ; pour l'instant rester sur les scénarios existants mais ajouter la possibilité d'objets/forces supplémentaires dans `pulley.ts` (gérer N objets si `objects.length > 2`, tracé de cordes adapté). Hors scope si trop complexe : au minimum la regénération doit produire un JSON cohérent et la timeline mise à jour.
-- Message assistant dans le chat indique ce qui a changé (diff simple : nouveau scénario, nb objets, nb étapes).
+- Ajout d'un module `src/lib/physics/recompute.ts` : pour chaque scénario, fonctions pures qui recalculent les grandeurs dérivées à partir de `constants` (ex : pendule → `T = 2π√(L/g)`, `vmax = √(2gL(1-cos θ))`).
+- Dans `BlackboardOverlay`/`StepsPanel`, on substitue les valeurs de `step.result` par les recalculs si une fonction est dispo pour le scénario courant. Sinon affichage IA d'origine.
+- Couvre les scénarios standards : `free_fall`, `inclined_plane`, `pulley`, `inclined_pulley`, `projectile`, `spring`, `pendulum`, `horizontal_motion`. Pour `circuit` et `generic` : pas de recompute, juste schéma.
 
-## 6. Persistance locale
+### 5. Persistance
 
-Nouveau fichier `src/lib/persistence.ts` :
-- Sauve dans `localStorage` :
-  - `pe.session.current` : `{ exercise, data, constants, t, currentStep, chatMessages, history, currentHistoryId }`
-  - `pe.sessions` : liste `[{ id, title, updatedAt, exercisePreview }]` (max 20)
-- API : `saveSession()`, `loadCurrent()`, `listSessions()`, `loadSession(id)`, `deleteSession(id)`, `clearAll()`.
-- Dans `Index.tsx` :
-  - Au mount : `loadCurrent()` et restore si présent.
-  - Sur tout changement significatif (`data`, `exercise`, `constants`, `chatMessages`, `history`) : `saveSession()` debouncé 500 ms.
-  - Bouton "Nouvel exercice" → archive la session courante dans `pe.sessions` puis reset.
-- Dans le panel Historique (et/ou un nouveau menu "Sessions" dans le header) : liste des sessions sauvegardées, clic → restore. Bouton supprimer.
-
-## 7. Détails UX
-
-- Échap ferme les panels overlay ouverts.
-- Tooltip sur chaque icône du header.
-- État vide du blackboard : message discret "▸ Lancez l'animation pour voir la résolution s'écrire ici."
-- Animation slide-in pour les panels (utilise `animate-slide-in-right` de Tailwind, miroir pour gauche).
+`constants` est déjà dans `debouncedSave` → les valeurs ajustées sont sauvegardées automatiquement avec la session.
 
 ## Fichiers touchés
 
-```text
-src/pages/Index.tsx              refonte layout (panels overlay, état toggle, persistance)
-src/components/BlackboardOverlay.tsx   réécrit : cumulatif, sans bordure, scroll auto
-src/components/AnimationPlayer.tsx     ajout boutons (fullscreen, screenshot, toggles, zoom, copy)
-src/components/SceneRenderer.tsx       props show* (forces/axes/grid), zoom
-src/components/HeaderToolbar.tsx       NEW : icônes header (chat, history, settings, sessions)
-src/components/SessionsMenu.tsx        NEW : dropdown sessions sauvegardées
-src/components/ChatPanel.tsx           wrapper overlay (slide-in, close button)
-src/components/HistoryPanel.tsx        wrapper overlay (slide-in)
-src/lib/persistence.ts                 NEW : localStorage helpers
-src/lib/physics/scenarios/*.ts         audit positions blocs vs forces (pulley en priorité)
-src/components/renderers/ObjectRenderer.tsx   vérifier re-render position
-supabase/functions/parse-exercise/index.ts    accepter previousJson + prompt modif
-src/lib/api.ts                         signature parseExercise(text, previousJson?)
-```
+- **Créés** : `src/components/ParamsOverlay.tsx`, `src/lib/physics/recompute.ts`
+- **Édités** : `src/pages/Index.tsx` (state + montage overlay + initialConstants ref), `src/components/AnimationPlayer.tsx` (bouton Sliders), `src/components/ControlsPanel.tsx` (ajouter input numérique + indicateur "modifié"), `src/components/BlackboardOverlay.tsx` (utiliser recompute si dispo)
 
-## Hors scope (pour plus tard)
+## Ce qui n'est PAS fait
 
-- Édition visuelle (drag des objets sur le tableau)
-- Persistance cloud (Supabase)
-- Export PDF (bouton déjà placeholder)
-- Refonte profonde du moteur pour systèmes vraiment arbitraires (N poulies, N masses interconnectées) — pour l'instant, on étend `pulley.ts` à plusieurs masses sur la même corde mais sans Lagrangien général.
+- Pas de modification de l'énoncé textuel ni d'appel à l'IA quand on bouge un slider (réservé au chat).
+- Édition visuelle directe sur le canvas : explicitement reportée par l'utilisateur.
