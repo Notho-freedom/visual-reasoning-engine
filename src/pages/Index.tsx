@@ -451,7 +451,7 @@ const Index = () => {
                       <div className="absolute top-3 left-4 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-mono pointer-events-none z-10">
                         Résolution
                       </div>
-                      <BlackboardOverlay step={step} index={currentStep} resetKey={data.meta.title + (history[0]?.id ?? "")} />
+                      <BlackboardOverlay step={step} index={currentStep} data={data} constants={constants} resetKey={data.meta.title + (history[0]?.id ?? "")} />
                     </ResizablePanel>
 
                     <ResizableHandle className="w-px bg-border/60 hover:bg-primary/40 hover:w-[2px] transition-all data-[resize-handle-state=drag]:bg-primary/60 data-[resize-handle-state=drag]:w-[2px]" />
