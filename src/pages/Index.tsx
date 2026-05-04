@@ -169,6 +169,7 @@ const Index = () => {
     if (!item) return;
     setData(item.data); setExercise(item.exercise);
     setConstants(item.data.constants ?? {});
+    initialConstantsRef.current = { ...(item.data.constants ?? {}) };
     setCurrentStep(0); setT(0); setCurrentHistoryId(id);
     toast({ title: "Version restaurée" });
   }, [history, toast]);
@@ -226,6 +227,7 @@ const Index = () => {
     const s = loadSession(id);
     if (!s || !s.data) return;
     setData(s.data); setExercise(s.exercise); setConstants(s.constants ?? {});
+    initialConstantsRef.current = { ...(s.data.constants ?? {}) };
     setT(s.t ?? 0); setCurrentStep(s.currentStep ?? 0);
     setChatMessages(s.chatMessages ?? []);
     setHistory((s.history ?? []) as HistoryItem[]);
