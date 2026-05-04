@@ -83,6 +83,7 @@ const Index = () => {
     const s = loadCurrent();
     if (s && s.data) {
       setData(s.data); setExercise(s.exercise); setConstants(s.constants ?? {});
+      initialConstantsRef.current = { ...(s.data.constants ?? {}) };
       setT(s.t ?? 0); setCurrentStep(s.currentStep ?? 0);
       setChatMessages(s.chatMessages ?? []);
       setHistory((s.history ?? []) as HistoryItem[]);
