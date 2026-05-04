@@ -122,6 +122,7 @@ const Index = () => {
       setData(result);
       setExercise(text);
       setConstants(result.constants ?? {});
+      initialConstantsRef.current = { ...(result.constants ?? {}) };
       setCurrentStep(0);
       setT(0);
       const label = opts.isFirst
