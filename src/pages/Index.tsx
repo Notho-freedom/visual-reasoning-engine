@@ -5,12 +5,12 @@ import {
   History as HistoryIcon, FileDown, X, FolderOpen, Trash2,
 } from "lucide-react";
 import SceneRenderer from "@/components/SceneRenderer";
-import ControlsPanel from "@/components/ControlsPanel";
 import AnimationPlayer from "@/components/AnimationPlayer";
 import BlackboardOverlay from "@/components/BlackboardOverlay";
 import ChatPanel, { type ChatMsg } from "@/components/ChatPanel";
 import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
 import EditableStatement from "@/components/EditableStatement";
+import ParamsOverlay from "@/components/ParamsOverlay";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -66,6 +66,7 @@ const Index = () => {
   // UI overlay state
   const [chatOpen, setChatOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [paramsOpen, setParamsOpen] = useState(false);
   const [showForces, setShowForces] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [sessions, setSessions] = useState<SessionMeta[]>(() => listSessions());
@@ -73,6 +74,7 @@ const Index = () => {
   const stepClickInFlight = useRef(false);
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const restoredRef = useRef(false);
+  const initialConstantsRef = useRef<Record<string, number>>({});
 
   // Restore session on mount
   useEffect(() => {
@@ -81,6 +83,7 @@ const Index = () => {
     const s = loadCurrent();
     if (s && s.data) {
       setData(s.data); setExercise(s.exercise); setConstants(s.constants ?? {});
+      initialConstantsRef.current = { ...(s.data.constants ?? {}) };
       setT(s.t ?? 0); setCurrentStep(s.currentStep ?? 0);
       setChatMessages(s.chatMessages ?? []);
       setHistory((s.history ?? []) as HistoryItem[]);
@@ -120,6 +123,7 @@ const Index = () => {
       setData(result);
       setExercise(text);
       setConstants(result.constants ?? {});
+      initialConstantsRef.current = { ...(result.constants ?? {}) };
       setCurrentStep(0);
       setT(0);
       const label = opts.isFirst
@@ -165,6 +169,7 @@ const Index = () => {
     if (!item) return;
     setData(item.data); setExercise(item.exercise);
     setConstants(item.data.constants ?? {});
+    initialConstantsRef.current = { ...(item.data.constants ?? {}) };
     setCurrentStep(0); setT(0); setCurrentHistoryId(id);
     toast({ title: "Version restaurée" });
   }, [history, toast]);
@@ -222,6 +227,7 @@ const Index = () => {
     const s = loadSession(id);
     if (!s || !s.data) return;
     setData(s.data); setExercise(s.exercise); setConstants(s.constants ?? {});
+    initialConstantsRef.current = { ...(s.data.constants ?? {}) };
     setT(s.t ?? 0); setCurrentStep(s.currentStep ?? 0);
     setChatMessages(s.chatMessages ?? []);
     setHistory((s.history ?? []) as HistoryItem[]);
@@ -445,7 +451,7 @@ const Index = () => {
                       <div className="absolute top-3 left-4 text-[10px] uppercase tracking-wider text-muted-foreground/60 font-mono pointer-events-none z-10">
                         Résolution
                       </div>
-                      <BlackboardOverlay step={step} index={currentStep} resetKey={data.meta.title + (history[0]?.id ?? "")} />
+                      <BlackboardOverlay step={step} index={currentStep} data={data} constants={constants} resetKey={data.meta.title + (history[0]?.id ?? "")} />
                     </ResizablePanel>
 
                     <ResizableHandle className="w-px bg-border/60 hover:bg-primary/40 hover:w-[2px] transition-all data-[resize-handle-state=drag]:bg-primary/60 data-[resize-handle-state=drag]:w-[2px]" />
@@ -461,6 +467,14 @@ const Index = () => {
                       >
                         <SceneRenderer scene={scene} step={step} showForces={showForces} zoom={zoom} />
                       </div>
+                      <ParamsOverlay
+                        open={paramsOpen}
+                        onClose={() => setParamsOpen(false)}
+                        constants={constants}
+                        initialConstants={initialConstantsRef.current}
+                        onChange={(k, v) => setConstants((prev) => ({ ...prev, [k]: v }))}
+                        onReset={() => setConstants({ ...initialConstantsRef.current })}
+                      />
                     </ResizablePanel>
                   </ResizablePanelGroup>
                 </div>
@@ -484,17 +498,11 @@ const Index = () => {
                     zoom={zoom}
                     onZoomChange={setZoom}
                     onCopyStep={handleCopyStep}
+                    paramsOpen={paramsOpen}
+                    onToggleParams={() => setParamsOpen(o => !o)}
+                    paramsCount={Object.keys(constants).length}
                   />
                 </div>
-
-                {Object.keys(constants).length > 0 && (
-                  <div className="rounded-2xl border border-border/60 bg-card px-5 py-3 shadow-soft">
-                    <ControlsPanel
-                      constants={constants}
-                      onConstantChange={(k, v) => setConstants((prev) => ({ ...prev, [k]: v }))}
-                    />
-                  </div>
-                )}
               </>
             )}
           </main>

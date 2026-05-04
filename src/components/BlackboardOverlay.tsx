@@ -1,15 +1,19 @@
-import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
-import type { TimelineStep } from "@/types/cognitive";
+import React, { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import type { CognitiveJSON, TimelineStep } from "@/types/cognitive";
+import { recomputeStepResult } from "@/lib/physics/recompute";
 
 interface Props {
   step?: TimelineStep;
   index: number;
+  data?: CognitiveJSON | null;
+  constants?: Record<string, number>;
   speed?: number; // chars per second
   resetKey?: string | number; // change → wipe board
 }
 
 interface BoardLine {
-  text: string;
+  text?: string;          // texte statique (titre, formule, description, divider)
+  resultKey?: string;     // si défini : ligne "⟹ key = <valeur live>"
   bold?: boolean;
   muted?: boolean;
   divider?: boolean;
@@ -29,19 +33,30 @@ function stepToLines(step: TimelineStep, idx: number): BoardLine[] {
   if (step.formula) lines.push({ text: `   ${step.formula}`, stepIndex: idx });
   if (step.description) lines.push({ text: `   ${step.description}`, muted: true, stepIndex: idx });
   if (step.result) {
-    Object.entries(step.result).forEach(([k, v]) => lines.push({ text: `   ⟹ ${k} = ${v}`, stepIndex: idx }));
+    Object.keys(step.result).forEach((k) => lines.push({ resultKey: k, stepIndex: idx }));
   }
   lines.push({ text: "", stepIndex: idx });
   return lines;
 }
 
-const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey }) => {
+const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, speed = 70, resetKey }) => {
   const [lines, setLines] = useState<BoardLine[]>([]);
   const [typingLine, setTypingLine] = useState<{ full: string; out: string } | null>(null);
   const writtenStepsRef = useRef<Set<number>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const [scrollOffset, setScrollOffset] = useState(0);
+
+  // Map stepIndex -> résultats live (recalculés à chaque changement de constants)
+  const liveResultsByStep = useMemo(() => {
+    const out: Record<number, Record<string, string | number>> = {};
+    if (!data || !constants) return out;
+    data.timeline.forEach((s, i) => {
+      const r = recomputeStepResult(data, s, constants);
+      if (r) out[i] = r;
+    });
+    return out;
+  }, [data, constants]);
 
   // Reset on new exercise
   useEffect(() => {
@@ -58,18 +73,25 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
     writtenStepsRef.current.add(index);
 
     const newLines = stepToLines(step, index);
-    // Type the lines one after the other
     let i = 0;
     let cancelled = false;
 
+    // Pour le typing d'une ligne resultKey, on a besoin de la valeur initiale
+    const renderLineText = (ln: BoardLine): string => {
+      if (ln.text !== undefined) return ln.text;
+      if (ln.resultKey) {
+        const v = liveResultsByStep[ln.stepIndex]?.[ln.resultKey] ?? step.result?.[ln.resultKey] ?? "";
+        return `   ⟹ ${ln.resultKey} = ${v}`;
+      }
+      return "";
+    };
+
     const typeNext = () => {
       if (cancelled) return;
-      if (i >= newLines.length) {
-        setTypingLine(null);
-        return;
-      }
+      if (i >= newLines.length) { setTypingLine(null); return; }
       const ln = newLines[i];
-      if (!ln.text || ln.divider || ln.text.length < 2) {
+      const txt = renderLineText(ln);
+      if (!txt || ln.divider || txt.length < 2) {
         setLines((prev) => [...prev, ln]);
         i++;
         typeNext();
@@ -77,12 +99,12 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
       }
       let pos = 0;
       const interval = Math.max(8, 1000 / speed);
-      setTypingLine({ full: ln.text, out: "" });
+      setTypingLine({ full: txt, out: "" });
       const id = window.setInterval(() => {
         pos++;
         if (cancelled) { window.clearInterval(id); return; }
-        setTypingLine({ full: ln.text, out: ln.text.slice(0, pos) });
-        if (pos >= ln.text.length) {
+        setTypingLine({ full: txt, out: txt.slice(0, pos) });
+        if (pos >= txt.length) {
           window.clearInterval(id);
           setLines((prev) => [...prev, ln]);
           i++;
@@ -92,9 +114,10 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
     };
     typeNext();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, index, speed]);
 
-  // Auto-scroll: push old lines up when overflow
+  // Auto-scroll
   useLayoutEffect(() => {
     const container = containerRef.current;
     const inner = innerRef.current;
@@ -102,7 +125,6 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
     const overflow = inner.scrollHeight - container.clientHeight;
     if (overflow > 0) {
       setScrollOffset(overflow + 8);
-      // Trim very old lines once they've scrolled far off
       if (overflow > 400 && lines.length > 60) {
         setLines((prev) => prev.slice(prev.length - 50));
         setScrollOffset(0);
@@ -111,6 +133,17 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
       setScrollOffset(0);
     }
   }, [lines, typingLine]);
+
+  // Helper d'affichage live d'une ligne déjà écrite
+  const renderStored = (ln: BoardLine, fallback?: TimelineStep): string => {
+    if (ln.text !== undefined) return ln.text;
+    if (ln.resultKey) {
+      const v = liveResultsByStep[ln.stepIndex]?.[ln.resultKey]
+        ?? fallback?.result?.[ln.resultKey] ?? "";
+      return `   ⟹ ${ln.resultKey} = ${v}`;
+    }
+    return "";
+  };
 
   return (
     <div
@@ -130,6 +163,8 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
         )}
         {lines.map((ln, i) => {
           const isCurrentStep = ln.stepIndex === index;
+          const txt = renderStored(ln, ln.stepIndex === index ? step : undefined);
+          const isLive = !!ln.resultKey;
           return (
             <div
               key={i}
@@ -140,10 +175,12 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, speed = 70, resetKey 
                     ? `text-foreground/55 ${isCurrentStep ? "font-medium text-foreground/75" : ""}`
                     : ln.bold
                       ? `font-semibold ${isCurrentStep ? "text-foreground" : "text-foreground/80"}`
-                      : isCurrentStep ? "text-foreground" : "text-foreground/75"
+                      : isLive
+                        ? `text-primary/90 ${isCurrentStep ? "text-primary" : ""}`
+                        : isCurrentStep ? "text-foreground" : "text-foreground/75"
               }
             >
-              {ln.text || "\u00A0"}
+              {txt || "\u00A0"}
             </div>
           );
         })}

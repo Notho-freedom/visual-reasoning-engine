@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Play, Pause, RotateCcw, Gauge, ChevronLeft, ChevronRight,
   Link2, Unlink, Maximize2, Camera, Eye, EyeOff, Copy, ZoomIn, ZoomOut,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -26,6 +27,9 @@ interface AnimationPlayerProps {
   zoom?: number;
   onZoomChange?: (z: number) => void;
   onCopyStep?: () => void;
+  paramsOpen?: boolean;
+  onToggleParams?: () => void;
+  paramsCount?: number;
 }
 
 const SPEEDS = [0.25, 0.5, 1, 2];
@@ -54,6 +58,7 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   duration, t, onTimeChange, phaseLabel,
   currentStep, totalSteps, onPrevStep, onNextStep, syncEnabled, onToggleSync,
   onFullscreen, onScreenshot, showForces = true, onToggleForces, zoom = 1, onZoomChange, onCopyStep,
+  paramsOpen, onToggleParams, paramsCount = 0,
 }) => {
   const { toast } = useToast();
   const [playing, setPlaying] = useState(false);
@@ -158,6 +163,27 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
         )}
 
         <div className="shrink-0 flex items-center gap-0.5 pl-2 ml-1 border-l border-border">
+          {onToggleParams && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggleParams}
+                  className={`relative h-8 px-2.5 rounded-full flex items-center gap-1 transition shrink-0 ${
+                    paramsOpen
+                      ? "bg-primary text-primary-foreground"
+                      : "text-foreground/70 hover:text-foreground hover:bg-secondary"
+                  }`}
+                  aria-label="Paramètres"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {paramsCount > 0 && (
+                    <span className="text-[10px] font-mono tabular-nums">{paramsCount}</span>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-[10px]">Paramètres en temps réel</TooltipContent>
+            </Tooltip>
+          )}
           {onToggleForces && (
             <IconBtn label={showForces ? "Masquer les forces" : "Afficher les forces"} active={!showForces} onClick={onToggleForces}>
               {showForces ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
