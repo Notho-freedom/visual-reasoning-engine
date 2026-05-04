@@ -467,6 +467,14 @@ const Index = () => {
                       >
                         <SceneRenderer scene={scene} step={step} showForces={showForces} zoom={zoom} />
                       </div>
+                      <ParamsOverlay
+                        open={paramsOpen}
+                        onClose={() => setParamsOpen(false)}
+                        constants={constants}
+                        initialConstants={initialConstantsRef.current}
+                        onChange={(k, v) => setConstants((prev) => ({ ...prev, [k]: v }))}
+                        onReset={() => setConstants({ ...initialConstantsRef.current })}
+                      />
                     </ResizablePanel>
                   </ResizablePanelGroup>
                 </div>
@@ -490,17 +498,11 @@ const Index = () => {
                     zoom={zoom}
                     onZoomChange={setZoom}
                     onCopyStep={handleCopyStep}
+                    paramsOpen={paramsOpen}
+                    onToggleParams={() => setParamsOpen(o => !o)}
+                    paramsCount={Object.keys(constants).length}
                   />
                 </div>
-
-                {Object.keys(constants).length > 0 && (
-                  <div className="rounded-2xl border border-border/60 bg-card px-5 py-3 shadow-soft">
-                    <ControlsPanel
-                      constants={constants}
-                      onConstantChange={(k, v) => setConstants((prev) => ({ ...prev, [k]: v }))}
-                    />
-                  </div>
-                )}
               </>
             )}
           </main>
