@@ -11,6 +11,8 @@ import ChatPanel, { type ChatMsg } from "@/components/ChatPanel";
 import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
 import EditableStatement from "@/components/EditableStatement";
 import ParamsOverlay from "@/components/ParamsOverlay";
+import ShortcutsOverlay from "@/components/ShortcutsOverlay";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -67,9 +69,12 @@ const Index = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [paramsOpen, setParamsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [loopEnabled, setLoopEnabled] = useState(false);
   const [showForces, setShowForces] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [sessions, setSessions] = useState<SessionMeta[]>(() => listSessions());
+  const playRef = useRef<{ toggle: () => void; reset: () => void } | null>(null);
 
   const stepClickInFlight = useRef(false);
   const boardContainerRef = useRef<HTMLDivElement>(null);
@@ -97,14 +102,8 @@ const Index = () => {
     debouncedSave({ exercise, data, constants, t, currentStep, chatMessages, history: history as HistoryItemSerial[], currentHistoryId });
   }, [exercise, data, constants, t, currentStep, chatMessages, history, currentHistoryId]);
 
-  // ESC closes panels
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setChatOpen(false); setHistoryOpen(false); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Keyboard shortcuts (only when workspace is active) — defined after goToStep below
+
 
   const pushHistory = useCallback((label: string, ex: string, d: CognitiveJSON) => {
     const id = `h-${Date.now()}`;
@@ -204,6 +203,25 @@ const Index = () => {
       }
     }
   }, [data, scene, syncEnabled]);
+
+  useKeyboardShortcuts({
+    enabled: !!data,
+    onPlayToggle: () => playRef.current?.toggle(),
+    onReset: () => playRef.current?.reset(),
+    onLoopToggle: () => setLoopEnabled(l => !l),
+    onPrevStep: () => goToStep(Math.max(0, currentStep - 1)),
+    onNextStep: () => goToStep(Math.min((data?.timeline.length ?? 1) - 1, currentStep + 1)),
+    onSyncToggle: () => setSyncEnabled(s => !s),
+    onForcesToggle: () => setShowForces(s => !s),
+    onZoomIn: () => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2))),
+    onZoomOut: () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2))),
+    onZoomReset: () => setZoom(1),
+    onToggleParams: () => setParamsOpen(o => !o),
+    onToggleChat: () => { setChatOpen(o => !o); setHistoryOpen(false); },
+    onToggleHistory: () => { setHistoryOpen(o => !o); setChatOpen(false); },
+    onShowHelp: () => setHelpOpen(true),
+    onEscape: () => { setChatOpen(false); setHistoryOpen(false); setHelpOpen(false); setParamsOpen(false); },
+  });
 
   const totalSteps = data?.timeline.length || 0;
   const step = data?.timeline[currentStep];
@@ -501,11 +519,16 @@ const Index = () => {
                     paramsOpen={paramsOpen}
                     onToggleParams={() => setParamsOpen(o => !o)}
                     paramsCount={Object.keys(constants).length}
+                    loopEnabled={loopEnabled}
+                    onToggleLoop={() => setLoopEnabled(l => !l)}
+                    onShowHelp={() => setHelpOpen(true)}
+                    playRef={playRef}
                   />
                 </div>
               </>
             )}
           </main>
+          <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
 
           {/* Overlay panel : Chat (gauche) */}
           {chatOpen && (

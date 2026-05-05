@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Play, Pause, RotateCcw, Gauge, ChevronLeft, ChevronRight,
   Link2, Unlink, Maximize2, Camera, Eye, EyeOff, Copy, ZoomIn, ZoomOut,
-  SlidersHorizontal,
+  SlidersHorizontal, Repeat, HelpCircle,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -30,6 +30,10 @@ interface AnimationPlayerProps {
   paramsOpen?: boolean;
   onToggleParams?: () => void;
   paramsCount?: number;
+  loopEnabled?: boolean;
+  onToggleLoop?: () => void;
+  onShowHelp?: () => void;
+  playRef?: React.MutableRefObject<{ toggle: () => void; reset: () => void } | null>;
 }
 
 const SPEEDS = [0.25, 0.5, 1, 2];
@@ -59,6 +63,7 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
   currentStep, totalSteps, onPrevStep, onNextStep, syncEnabled, onToggleSync,
   onFullscreen, onScreenshot, showForces = true, onToggleForces, zoom = 1, onZoomChange, onCopyStep,
   paramsOpen, onToggleParams, paramsCount = 0,
+  loopEnabled = false, onToggleLoop, onShowHelp, playRef,
 }) => {
   const { toast } = useToast();
   const [playing, setPlaying] = useState(false);
@@ -81,10 +86,15 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
       lastTickRef.current = now;
       let next = tRef.current + dt * speed;
       if (next >= duration) {
-        next = duration;
-        setPlaying(false);
-        onTimeChange(next);
-        return;
+        if (loopEnabled) {
+          next = 0;
+          lastTickRef.current = now;
+        } else {
+          next = duration;
+          setPlaying(false);
+          onTimeChange(next);
+          return;
+        }
       }
       tRef.current = next;
       onTimeChange(next);
@@ -92,13 +102,19 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [playing, speed, duration, onTimeChange]);
+  }, [playing, speed, duration, onTimeChange, loopEnabled]);
 
   const togglePlay = () => {
     if (t >= duration) { onTimeChange(0); tRef.current = 0; }
     setPlaying((p) => !p);
   };
   const reset = () => { setPlaying(false); tRef.current = 0; onTimeChange(0); };
+
+  useEffect(() => {
+    if (!playRef) return;
+    playRef.current = { toggle: togglePlay, reset };
+    return () => { if (playRef) playRef.current = null; };
+  });
 
   const zoomOut = () => onZoomChange?.(Math.max(0.5, +(zoom - 0.1).toFixed(2)));
   const zoomIn = () => onZoomChange?.(Math.min(2, +(zoom + 0.1).toFixed(2)));
@@ -112,6 +128,11 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
         <IconBtn label="Réinitialiser" onClick={reset}>
           <RotateCcw className="h-3.5 w-3.5" />
         </IconBtn>
+        {onToggleLoop && (
+          <IconBtn label={loopEnabled ? "Boucle activée" : "Boucle désactivée"} active={loopEnabled} onClick={onToggleLoop}>
+            <Repeat className="h-3.5 w-3.5" />
+          </IconBtn>
+        )}
 
         <div className="flex-1 flex items-center gap-2 min-w-0 px-2">
           <span className="text-[10px] font-mono text-muted-foreground tabular-nums shrink-0 w-12">
@@ -211,6 +232,11 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
           {onFullscreen && (
             <IconBtn label="Plein écran" onClick={onFullscreen}>
               <Maximize2 className="h-3.5 w-3.5" />
+            </IconBtn>
+          )}
+          {onShowHelp && (
+            <IconBtn label="Raccourcis (?)" onClick={onShowHelp}>
+              <HelpCircle className="h-3.5 w-3.5" />
             </IconBtn>
           )}
         </div>
