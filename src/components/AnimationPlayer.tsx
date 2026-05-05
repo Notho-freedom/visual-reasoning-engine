@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Play, Pause, RotateCcw, Gauge, ChevronLeft, ChevronRight,
   Link2, Unlink, Maximize2, Camera, Eye, EyeOff, Copy, ZoomIn, ZoomOut,
-  SlidersHorizontal,
+  SlidersHorizontal, Repeat, HelpCircle,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
