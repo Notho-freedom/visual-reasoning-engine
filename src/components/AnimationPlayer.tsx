@@ -128,6 +128,11 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
         <IconBtn label="Réinitialiser" onClick={reset}>
           <RotateCcw className="h-3.5 w-3.5" />
         </IconBtn>
+        {onToggleLoop && (
+          <IconBtn label={loopEnabled ? "Boucle activée" : "Boucle désactivée"} active={loopEnabled} onClick={onToggleLoop}>
+            <Repeat className="h-3.5 w-3.5" />
+          </IconBtn>
+        )}
 
         <div className="flex-1 flex items-center gap-2 min-w-0 px-2">
           <span className="text-[10px] font-mono text-muted-foreground tabular-nums shrink-0 w-12">
@@ -227,6 +232,11 @@ const AnimationPlayer: React.FC<AnimationPlayerProps> = ({
           {onFullscreen && (
             <IconBtn label="Plein écran" onClick={onFullscreen}>
               <Maximize2 className="h-3.5 w-3.5" />
+            </IconBtn>
+          )}
+          {onShowHelp && (
+            <IconBtn label="Raccourcis (?)" onClick={onShowHelp}>
+              <HelpCircle className="h-3.5 w-3.5" />
             </IconBtn>
           )}
         </div>
