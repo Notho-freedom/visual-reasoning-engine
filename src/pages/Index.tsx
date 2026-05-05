@@ -11,6 +11,8 @@ import ChatPanel, { type ChatMsg } from "@/components/ChatPanel";
 import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
 import EditableStatement from "@/components/EditableStatement";
 import ParamsOverlay from "@/components/ParamsOverlay";
+import ShortcutsOverlay from "@/components/ShortcutsOverlay";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -67,9 +69,12 @@ const Index = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [paramsOpen, setParamsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [loopEnabled, setLoopEnabled] = useState(false);
   const [showForces, setShowForces] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [sessions, setSessions] = useState<SessionMeta[]>(() => listSessions());
+  const playRef = useRef<{ toggle: () => void; reset: () => void } | null>(null);
 
   const stepClickInFlight = useRef(false);
   const boardContainerRef = useRef<HTMLDivElement>(null);
