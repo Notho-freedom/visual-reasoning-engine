@@ -102,25 +102,8 @@ const Index = () => {
     debouncedSave({ exercise, data, constants, t, currentStep, chatMessages, history: history as HistoryItemSerial[], currentHistoryId });
   }, [exercise, data, constants, t, currentStep, chatMessages, history, currentHistoryId]);
 
-  // Keyboard shortcuts (only when workspace is active)
-  useKeyboardShortcuts({
-    enabled: !!data,
-    onPlayToggle: () => playRef.current?.toggle(),
-    onReset: () => playRef.current?.reset(),
-    onLoopToggle: () => setLoopEnabled(l => !l),
-    onPrevStep: () => goToStep(Math.max(0, currentStep - 1)),
-    onNextStep: () => goToStep(Math.min((data?.timeline.length ?? 1) - 1, currentStep + 1)),
-    onSyncToggle: () => setSyncEnabled(s => !s),
-    onForcesToggle: () => setShowForces(s => !s),
-    onZoomIn: () => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2))),
-    onZoomOut: () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2))),
-    onZoomReset: () => setZoom(1),
-    onToggleParams: () => setParamsOpen(o => !o),
-    onToggleChat: () => { setChatOpen(o => !o); setHistoryOpen(false); },
-    onToggleHistory: () => { setHistoryOpen(o => !o); setChatOpen(false); },
-    onShowHelp: () => setHelpOpen(true),
-    onEscape: () => { setChatOpen(false); setHistoryOpen(false); setHelpOpen(false); setParamsOpen(false); },
-  });
+  // Keyboard shortcuts (only when workspace is active) — defined after goToStep below
+
 
   const pushHistory = useCallback((label: string, ex: string, d: CognitiveJSON) => {
     const id = `h-${Date.now()}`;
@@ -220,6 +203,25 @@ const Index = () => {
       }
     }
   }, [data, scene, syncEnabled]);
+
+  useKeyboardShortcuts({
+    enabled: !!data,
+    onPlayToggle: () => playRef.current?.toggle(),
+    onReset: () => playRef.current?.reset(),
+    onLoopToggle: () => setLoopEnabled(l => !l),
+    onPrevStep: () => goToStep(Math.max(0, currentStep - 1)),
+    onNextStep: () => goToStep(Math.min((data?.timeline.length ?? 1) - 1, currentStep + 1)),
+    onSyncToggle: () => setSyncEnabled(s => !s),
+    onForcesToggle: () => setShowForces(s => !s),
+    onZoomIn: () => setZoom(z => Math.min(2, +(z + 0.1).toFixed(2))),
+    onZoomOut: () => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2))),
+    onZoomReset: () => setZoom(1),
+    onToggleParams: () => setParamsOpen(o => !o),
+    onToggleChat: () => { setChatOpen(o => !o); setHistoryOpen(false); },
+    onToggleHistory: () => { setHistoryOpen(o => !o); setChatOpen(false); },
+    onShowHelp: () => setHelpOpen(true),
+    onEscape: () => { setChatOpen(false); setHistoryOpen(false); setHelpOpen(false); setParamsOpen(false); },
+  });
 
   const totalSteps = data?.timeline.length || 0;
   const step = data?.timeline[currentStep];
