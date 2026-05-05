@@ -517,8 +517,16 @@ const Index = () => {
                     paramsOpen={paramsOpen}
                     onToggleParams={() => setParamsOpen(o => !o)}
                     paramsCount={Object.keys(constants).length}
+                    loopEnabled={loopEnabled}
+                    onToggleLoop={() => setLoopEnabled(l => !l)}
+                    onShowHelp={() => setHelpOpen(true)}
+                    playRef={playRef}
                   />
                 </div>
+              </>
+            )}
+          </main>
+          <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
               </>
             )}
           </main>
