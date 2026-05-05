@@ -527,9 +527,6 @@ const Index = () => {
             )}
           </main>
           <ShortcutsOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
-              </>
-            )}
-          </main>
 
           {/* Overlay panel : Chat (gauche) */}
           {chatOpen && (
