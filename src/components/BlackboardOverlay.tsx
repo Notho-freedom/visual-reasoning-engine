@@ -45,7 +45,6 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
   const writtenStepsRef = useRef<Set<number>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
-  const [scrollOffset, setScrollOffset] = useState(0);
 
   // Map stepIndex -> résultats live (recalculés à chaque changement de constants)
   const liveResultsByStep = useMemo(() => {
@@ -63,7 +62,7 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
     setLines([]);
     setTypingLine(null);
     writtenStepsRef.current.clear();
-    setScrollOffset(0);
+    if (containerRef.current) containerRef.current.scrollTop = 0;
   }, [resetKey]);
 
   // Append step lines when a new step is reached
@@ -117,21 +116,11 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, index, speed]);
 
-  // Auto-scroll
+  // Auto-scroll vers le bas (scroll natif invisible)
   useLayoutEffect(() => {
     const container = containerRef.current;
-    const inner = innerRef.current;
-    if (!container || !inner) return;
-    const overflow = inner.scrollHeight - container.clientHeight;
-    if (overflow > 0) {
-      setScrollOffset(overflow + 8);
-      if (overflow > 400 && lines.length > 60) {
-        setLines((prev) => prev.slice(prev.length - 50));
-        setScrollOffset(0);
-      }
-    } else {
-      setScrollOffset(0);
-    }
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [lines, typingLine]);
 
   // Helper d'affichage live d'une ligne déjà écrite
@@ -148,13 +137,12 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 px-10 py-8 pointer-events-none overflow-hidden"
+      className="absolute inset-0 px-10 py-8 overflow-y-auto blackboard-scroll"
       style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
     >
       <div
         ref={innerRef}
-        className="text-[13px] leading-[1.7] text-foreground/85 transition-transform duration-500 ease-out"
-        style={{ transform: `translateY(-${scrollOffset}px)` }}
+        className="text-[13px] leading-[1.7] text-foreground/85"
       >
         {lines.length === 0 && !typingLine && (
           <div className="text-foreground/35 italic">
