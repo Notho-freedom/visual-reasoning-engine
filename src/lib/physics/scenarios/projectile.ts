@@ -8,10 +8,15 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
   const v0 = spec.params.v0 ?? constants.v0 ?? 20;
   const thetaDeg = spec.params.theta ?? constants.theta ?? 45;
   const g = constants.g ?? 9.81;
+  const h0 = spec.params.h0 ?? constants.h0 ?? 0;
   const t = deg2rad(thetaDeg);
-  const range = (v0 * v0 * Math.sin(2 * t)) / g;
-  const maxH = (v0 * v0 * Math.sin(t) ** 2) / (2 * g);
-  const tFlight = (2 * v0 * Math.sin(t)) / g;
+  const vx0 = v0 * Math.cos(t);
+  const vy0 = v0 * Math.sin(t);
+  // Temps de vol résolvant y(t) = h0 + vy0*t - 0.5*g*t² = 0
+  const disc = vy0 * vy0 + 2 * g * h0;
+  const tFlight = (vy0 + Math.sqrt(Math.max(disc, 0))) / g;
+  const range = vx0 * tFlight;
+  const maxH = h0 + (vy0 * vy0) / (2 * g);
 
   const scalePx = Math.min((W - 200) / Math.max(range + 1, 1), (H - 160) / Math.max(maxH + 1, 1));
   const vp = makeViewport(W, H, scalePx, 90, H - 90);
