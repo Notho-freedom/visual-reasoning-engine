@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, FORCE_COLORS } from "../forces";
+import { makeTrail, sampleLine, sampleRecentTime } from "../trajectory";
 
 export function computePulley(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
@@ -54,6 +55,29 @@ export function computePulley(spec: DiagramSpec, constants: Record<string, numbe
   const c1 = toSVG(c1Phys, vp);
   const c2 = toSVG(c2Phys, vp);
 
+  const c1AtDisp = (disp: number) => toSVG({ x: -offsetX, y: y1Init + disp }, vp);
+  const c2AtDisp = (disp: number) => toSVG({ x: offsetX, y: y2Init - disp }, vp);
+  [
+    makeTrail("pulley_m1_theoretical_path", sampleLine(c1AtDisp(-maxDisp), c1AtDisp(maxDisp), 24), "theoretical"),
+    makeTrail("pulley_m2_theoretical_path", sampleLine(c2AtDisp(maxDisp), c2AtDisp(-maxDisp), 24), "theoretical"),
+    makeTrail(
+      "pulley_m1_temporal_trail",
+      sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 18, (tt) => {
+        const sampleDisp = Math.max(-maxDisp, Math.min(maxDisp, 0.5 * accel * tt * tt));
+        return c1AtDisp(sampleDisp);
+      }),
+      "temporal"
+    ),
+    makeTrail(
+      "pulley_m2_temporal_trail",
+      sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 18, (tt) => {
+        const sampleDisp = Math.max(-maxDisp, Math.min(maxDisp, 0.5 * accel * tt * tt));
+        return c2AtDisp(sampleDisp);
+      }),
+      "temporal"
+    ),
+  ].forEach((trail) => { if (trail) elements.push(trail); });
+
   const ropeAnchor1 = toSVG({ x: -offsetX, y: ceilY - 0.25 }, vp);
   const ropeAnchor2 = toSVG({ x: offsetX, y: ceilY - 0.25 }, vp);
   elements.push({ id: "rope1", type: "rope", position: ropeAnchor1, end: c1 });
@@ -87,6 +111,7 @@ export function computePulley(spec: DiagramSpec, constants: Record<string, numbe
   elements.push({ id: `local_axis_${obj2Id}`, type: "local_axis", position: c2, meta: { rotationDeg: 0, length: 28 } });
 
   const objectCenters: Record<string, Vec2> = { [obj1Id]: c1, [obj2Id]: c2 };
+  const objectLocalRotations: Record<string, number> = { [obj1Id]: 0, [obj2Id]: 0 };
   const forces: ResolvedForce[] = [];
 
   // Tension commune du système
@@ -123,5 +148,5 @@ export function computePulley(spec: DiagramSpec, constants: Record<string, numbe
 
   const v = Math.abs(accel * frame.t);
   const phaseLabel = `a=${accel.toFixed(2)} m/s²  v=${v.toFixed(2)} m/s  T=${T.toFixed(1)}N`;
-  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
+  return { width: W, height: H, elements, forces, objectCenters, objectLocalRotations, phaseLabel };
 }

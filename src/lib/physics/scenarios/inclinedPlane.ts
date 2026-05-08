@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, deg2rad, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, normalOnSlope, frictionOnSlope, FORCE_COLORS, customForce } from "../forces";
+import { makeTrail, sampleLine, sampleRecentTime } from "../trajectory";
 
 export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
@@ -70,10 +71,27 @@ export function computeInclinedPlane(spec: DiagramSpec, constants: Record<string
     const dRestant = Math.max(0.3, dStart - sParcouru);
 
     const halfDiag = sizeM / 2;
+    const centerAtDistance = (d: number) => toSVG({
+      x: d * Math.cos(a) + halfDiag * -Math.sin(a),
+      y: d * Math.sin(a) + halfDiag * Math.cos(a),
+    }, vp);
+    const pathStart = centerAtDistance(dStart);
+    const pathEnd = centerAtDistance(0.3);
+    const theoretical = makeTrail(`path_${obj.id}`, sampleLine(pathStart, pathEnd, 28), "theoretical");
+    if (theoretical) elements.push(theoretical);
+
+    const temporal = makeTrail(
+      `trail_${obj.id}`,
+      sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 18, (tt) => {
+        const travelled = 0.5 * accel * tt * tt;
+        return centerAtDistance(Math.max(0.3, dStart - travelled));
+      }),
+      "temporal"
+    );
+    if (temporal) elements.push(temporal);
+
     // Position du centre du bloc : sur la pente + décalage perpendiculaire (vers le haut de la normale)
-    const cxPhys = dRestant * Math.cos(a) + halfDiag * -Math.sin(a);
-    const cyPhys = dRestant * Math.sin(a) + halfDiag * Math.cos(a);
-    const center = toSVG({ x: cxPhys, y: cyPhys }, vp);
+    const center = centerAtDistance(dRestant);
     objectCenters[obj.id] = center;
     // Rotation locale = -angleDeg en convention SVG (axes tournés avec la pente)
     objectLocalRotations[obj.id] = angleDeg;

@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, deg2rad, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, customForce, FORCE_COLORS } from "../forces";
+import { makeTrail } from "../trajectory";
 
 export function computeProjectile(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
@@ -71,9 +72,11 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
     type: "projectile_path",
     position: trajPath[0],
     end: trajPath[trajPath.length - 1],
-    meta: { points: JSON.stringify(trajPath) },
+    meta: { points: JSON.stringify(trajPath), variant: "theoretical" },
     label: `R = ${range.toFixed(1)} m`,
   });
+  const theoretical = makeTrail("projectile_theoretical_path", trajPath, "theoretical");
+  if (theoretical) elements.push(theoretical);
 
   // Trace progressive
   const animT = Math.min(frame.t, tFlight);
@@ -87,11 +90,11 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
       trail.push(toSVG({ x, y }, vp));
     }
     elements.push({
-      id: "trail",
+      id: "projectile_temporal_trail",
       type: "trail",
       position: trail[0],
       end: trail[trail.length - 1],
-      meta: { points: JSON.stringify(trail) },
+      meta: { points: JSON.stringify(trail), variant: "temporal" },
     });
   }
 

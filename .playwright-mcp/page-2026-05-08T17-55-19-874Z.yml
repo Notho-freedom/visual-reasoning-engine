@@ -1,0 +1,12 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e207]:
+    - banner [ref=e208]:
+      - generic [ref=e209]:
+        - img [ref=e211]
+        - generic [ref=e215]: PhysicsEngine
+    - generic [ref=e246]:
+      - img [ref=e247]
+      - text: Analyse de l'énoncé…

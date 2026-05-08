@@ -1,0 +1,89 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - img [ref=e8]
+          - generic [ref=e12]: PhysicsEngine
+        - generic [ref=e13]: mechanics · pendulum
+      - generic [ref=e14]:
+        - button "Chat" [ref=e15] [cursor=pointer]:
+          - img [ref=e16]
+        - button "Historique" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+          - generic [ref=e23]: "1"
+        - button "Exporter PDF" [disabled]:
+          - img
+          - text: Exporter PDF
+        - button "Nouvel exercice" [ref=e25] [cursor=pointer]:
+          - img
+          - text: Nouvel exercice
+    - main [ref=e27]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic: Résolution
+          - generic [ref=e33]: ─── Étape 1 · concept ───
+        - separator [ref=e36]
+        - generic [ref=e37]:
+          - generic: Schéma
+          - img [ref=e39]:
+            - generic [ref=e98]: L = 1.20 m
+            - generic [ref=e101]: θ=20°
+            - generic [ref=e105]: M
+            - generic [ref=e106]:
+              - generic [ref=e109]: x
+              - generic [ref=e111]: "y"
+              - generic [ref=e113]: O
+              - generic [ref=e114]: 1 m
+            - generic [ref=e115]:
+              - generic [ref=e117]: t
+              - generic [ref=e119]: "n"
+            - generic [ref=e122]: P
+            - generic [ref=e125]: T
+      - generic [ref=e127]:
+        - button "Lecture" [ref=e128] [cursor=pointer]:
+          - img [ref=e129]
+        - button "Réinitialiser" [ref=e131] [cursor=pointer]:
+          - img [ref=e132]
+        - button "Boucle désactivée" [ref=e135] [cursor=pointer]:
+          - img [ref=e136]
+        - generic [ref=e141]:
+          - generic [ref=e142]: 0.00s
+          - slider [ref=e146]
+          - generic [ref=e147]: 4.40s
+        - generic [ref=e148]:
+          - img [ref=e149]
+          - button "0.25x" [ref=e152] [cursor=pointer]
+          - button "0.5x" [ref=e153] [cursor=pointer]
+          - button "1x" [ref=e154] [cursor=pointer]
+          - button "2x" [ref=e155] [cursor=pointer]
+        - generic [ref=e156]:
+          - button "Sync activée" [ref=e157] [cursor=pointer]:
+            - img [ref=e158]
+          - button "Étape précédente" [disabled] [ref=e161]:
+            - img [ref=e162]
+          - generic [ref=e164]: 1/3
+          - button "Étape suivante" [ref=e165] [cursor=pointer]:
+            - img [ref=e166]
+        - generic [ref=e168]:
+          - button "Paramètres" [ref=e169] [cursor=pointer]:
+            - img [ref=e170]
+          - button "Masquer les forces" [ref=e171] [cursor=pointer]:
+            - img [ref=e172]
+          - button "Zoom -" [ref=e175] [cursor=pointer]:
+            - img [ref=e176]
+          - generic [ref=e179]: 100%
+          - button "Zoom +" [ref=e180] [cursor=pointer]:
+            - img [ref=e181]
+          - button "Copier l'étape" [ref=e184] [cursor=pointer]:
+            - img [ref=e185]
+          - button "Capture d'écran" [ref=e188] [cursor=pointer]:
+            - img [ref=e189]
+          - button "Plein écran" [ref=e192] [cursor=pointer]:
+            - img [ref=e193]
+          - button "Raccourcis (?)" [ref=e198] [cursor=pointer]:
+            - img [ref=e199]
+        - generic [ref=e202]: θ=20.0° T=2.20s

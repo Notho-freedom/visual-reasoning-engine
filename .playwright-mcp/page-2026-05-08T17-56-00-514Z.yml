@@ -1,0 +1,99 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region "Notifications (F8)":
+      - list [ref=e250]:
+        - status [ref=e251]:
+          - generic [ref=e252]:
+            - generic [ref=e253]: Schéma généré
+            - generic [ref=e254]: 5 étapes — inclined_plane
+          - button [ref=e255] [cursor=pointer]:
+            - img [ref=e256]
+    - region "Notifications alt+T"
+    - generic [ref=e260]:
+      - banner [ref=e261]:
+        - generic [ref=e262]:
+          - generic [ref=e263]:
+            - img [ref=e265]
+            - generic [ref=e269]: PhysicsEngine
+          - generic [ref=e270]: mechanics · inclined_plane
+        - generic [ref=e271]:
+          - button "Chat" [ref=e272] [cursor=pointer]:
+            - img [ref=e273]
+          - button "Historique" [ref=e275] [cursor=pointer]:
+            - img [ref=e276]
+            - generic [ref=e280]: "1"
+          - button "Exporter PDF" [disabled]:
+            - img
+            - text: Exporter PDF
+          - button "Nouvel exercice" [ref=e282] [cursor=pointer]:
+            - img
+            - text: Nouvel exercice
+      - main [ref=e284]:
+        - generic [ref=e286]:
+          - generic [ref=e287]:
+            - generic: Résolution
+            - generic [ref=e289]:
+              - generic [ref=e290]: ─── Étape 1 · concept ───
+              - generic [ref=e291]: Bilan
+          - separator [ref=e293]
+          - generic [ref=e294]:
+            - generic: Schéma
+            - img [ref=e296]:
+              - generic [ref=e368]: α=30°
+              - generic [ref=e369]:
+                - generic [ref=e372]: x
+                - generic [ref=e374]: "y"
+                - generic [ref=e376]: O
+                - generic [ref=e377]: 1 m
+              - generic [ref=e381]: m
+              - generic [ref=e382]:
+                - generic [ref=e384]: x'
+                - generic [ref=e386]: y'
+              - generic [ref=e389]: P
+              - generic [ref=e392]: "N"
+              - generic [ref=e395]: f
+        - generic [ref=e397]:
+          - button "Lecture" [ref=e398] [cursor=pointer]:
+            - img [ref=e399]
+          - button "Réinitialiser" [ref=e401] [cursor=pointer]:
+            - img [ref=e402]
+          - button "Boucle désactivée" [ref=e405] [cursor=pointer]:
+            - img [ref=e406]
+          - generic [ref=e411]:
+            - generic [ref=e412]: 0.00s
+            - slider [ref=e416]
+            - generic [ref=e417]: 1.19s
+          - generic [ref=e418]:
+            - img [ref=e419]
+            - button "0.25x" [ref=e422] [cursor=pointer]
+            - button "0.5x" [ref=e423] [cursor=pointer]
+            - button "1x" [ref=e424] [cursor=pointer]
+            - button "2x" [ref=e425] [cursor=pointer]
+          - generic [ref=e426]:
+            - button "Sync activée" [ref=e427] [cursor=pointer]:
+              - img [ref=e428]
+            - button "Étape précédente" [disabled] [ref=e431]:
+              - img [ref=e432]
+            - generic [ref=e434]: 1/5
+            - button "Étape suivante" [ref=e435] [cursor=pointer]:
+              - img [ref=e436]
+          - generic [ref=e438]:
+            - button "Paramètres" [ref=e439] [cursor=pointer]:
+              - img [ref=e440]
+            - button "Masquer les forces" [ref=e441] [cursor=pointer]:
+              - img [ref=e442]
+            - button "Zoom -" [ref=e445] [cursor=pointer]:
+              - img [ref=e446]
+            - generic [ref=e449]: 100%
+            - button "Zoom +" [ref=e450] [cursor=pointer]:
+              - img [ref=e451]
+            - button "Copier l'étape" [ref=e454] [cursor=pointer]:
+              - img [ref=e455]
+            - button "Capture d'écran" [ref=e458] [cursor=pointer]:
+              - img [ref=e459]
+            - button "Plein écran" [ref=e462] [cursor=pointer]:
+              - img [ref=e463]
+            - button "Raccourcis (?)" [ref=e468] [cursor=pointer]:
+              - img [ref=e469]
+          - generic [ref=e472]: v = 0.00 m/s a = 4.90 m/s²
+  - status [ref=e473]

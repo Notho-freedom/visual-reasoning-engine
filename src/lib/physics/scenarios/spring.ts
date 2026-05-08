@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, FORCE_COLORS, customForce } from "../forces";
+import { makeTrail, sampleLine, sampleRecentTime } from "../trajectory";
 
 /**
  * Ressort horizontal OU vertical (selon params.orientation = "vertical").
@@ -43,6 +44,7 @@ function computeSpringHorizontal(spec: DiagramSpec, constants: Record<string, nu
   });
 
   const COMPRESS_TIME = 1.2;
+  const omega = Math.sqrt(k / m);
   let xCompression: number;
   let phase: "compression" | "release";
   let phaseLabel: string;
@@ -52,7 +54,6 @@ function computeSpringHorizontal(spec: DiagramSpec, constants: Record<string, nu
     phase = "compression";
     phaseLabel = "Phase 1 — Compression";
   } else {
-    const omega = Math.sqrt(k / m);
     const tt = frame.t - COMPRESS_TIME;
     xCompression = xMax * Math.cos(omega * tt);
     phase = "release";
@@ -65,6 +66,25 @@ function computeSpringHorizontal(spec: DiagramSpec, constants: Record<string, nu
   const yCenter = sizeM / 2;
   const center = toSVG({ x: blockX, y: yCenter }, vp);
   const objId = spec.objects[0]?.id ?? "block";
+
+  const theoretical = makeTrail(
+    "spring_theoretical_path",
+    sampleLine(toSVG({ x: L0 - xMax, y: yCenter }, vp), toSVG({ x: L0 + xMax, y: yCenter }, vp), 32),
+    "theoretical"
+  );
+  if (theoretical) elements.push(theoretical);
+
+  const temporal = makeTrail(
+    "spring_temporal_trail",
+    sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 24, (tt) => {
+      const compression = tt < COMPRESS_TIME
+        ? (tt / COMPRESS_TIME) * xMax
+        : xMax * Math.cos(omega * (tt - COMPRESS_TIME));
+      return toSVG({ x: L0 - compression, y: yCenter }, vp);
+    }),
+    "temporal"
+  );
+  if (temporal) elements.push(temporal);
 
   const eqX = toSVG({ x: L0, y: yCenter }, vp);
   elements.push({
@@ -185,6 +205,27 @@ function computeSpringVertical(spec: DiagramSpec, constants: Record<string, numb
   const yCenterPhys = -(L0 + stretch + sizeM / 2);
   const center = toSVG({ x: 0, y: yCenterPhys }, vp);
   const objId = spec.objects[0]?.id ?? "block";
+
+  const theoretical = makeTrail(
+    "spring_vertical_theoretical_path",
+    sampleLine(
+      toSVG({ x: 0, y: -(L0 + xEq - xMax + sizeM / 2) }, vp),
+      toSVG({ x: 0, y: -(L0 + xEq + xMax + sizeM / 2) }, vp),
+      32
+    ),
+    "theoretical"
+  );
+  if (theoretical) elements.push(theoretical);
+
+  const temporal = makeTrail(
+    "spring_vertical_temporal_trail",
+    sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 24, (tt) => {
+      const sampleStretch = xEq + xMax * Math.cos(omega * tt);
+      return toSVG({ x: 0, y: -(L0 + sampleStretch + sizeM / 2) }, vp);
+    }),
+    "temporal"
+  );
+  if (temporal) elements.push(temporal);
 
   // Position d'équilibre (référence)
   const yEqPhys = -(L0 + xEq + sizeM / 2);

@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, normalHorizontal, FORCE_COLORS, customForce } from "../forces";
+import { makeTrail, sampleLine, sampleRecentTime } from "../trajectory";
 
 export function computeHorizontalMotion(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
@@ -39,6 +40,27 @@ export function computeHorizontalMotion(spec: DiagramSpec, constants: Record<str
     const xClamped = Math.min(8.5, Math.max(0.5, xPhys));
     const center = toSVG({ x: xClamped, y: sizeM / 2 }, vp);
     objectCenters[obj.id] = center;
+
+    const yCenter = sizeM / 2;
+    const direction = Math.sign(accelExt || v0 || 1);
+    const pathA = direction >= 0 ? xStart : 0.5;
+    const pathB = direction >= 0 ? 8.5 : xStart;
+    const theoretical = makeTrail(
+      `path_${obj.id}`,
+      sampleLine(toSVG({ x: Math.max(0.5, Math.min(8.5, pathA)), y: yCenter }, vp), toSVG({ x: Math.max(0.5, Math.min(8.5, pathB)), y: yCenter }, vp), 24),
+      "theoretical"
+    );
+    if (theoretical) elements.push(theoretical);
+
+    const temporal = makeTrail(
+      `trail_${obj.id}`,
+      sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 18, (tt) => {
+        const x = Math.min(8.5, Math.max(0.5, xStart + v0 * tt + 0.5 * accelExt * tt * tt));
+        return toSVG({ x, y: yCenter }, vp);
+      }),
+      "temporal"
+    );
+    if (temporal) elements.push(temporal);
 
     elements.push({
       id: obj.id,

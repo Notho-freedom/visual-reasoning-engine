@@ -1,0 +1,38 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - region "Notifications alt+T"
+  - generic [ref=e207]:
+    - banner [ref=e208]:
+      - generic [ref=e209]:
+        - img [ref=e211]
+        - generic [ref=e215]: PhysicsEngine
+      - button "Reprendre (1)" [ref=e217] [cursor=pointer]:
+        - img
+        - text: Reprendre (1)
+    - main [ref=e218]:
+      - generic [ref=e219]:
+        - generic [ref=e220]:
+          - img [ref=e221]
+          - generic [ref=e224]: Propulsé par l'IA
+        - generic [ref=e225]:
+          - heading "Résolvez n'importe quel problème de physique" [level=1] [ref=e226]:
+            - text: Résolvez n'importe quel
+            - text: problème de physique
+          - paragraph [ref=e227]: Décrivez un exercice — obtenez un schéma animé exact et la résolution pas à pas.
+        - generic [ref=e228]:
+          - textbox "Décrivez votre exercice de physique..." [ref=e229]
+          - generic [ref=e230]:
+            - button "Ajouter" [ref=e231] [cursor=pointer]:
+              - img [ref=e232]
+            - button [disabled] [ref=e233]:
+              - img [ref=e234]
+        - generic [ref=e236]:
+          - button "Chute libre" [ref=e237] [cursor=pointer]
+          - button "Plan incliné" [ref=e238] [cursor=pointer]
+          - button "Plan + poulie" [ref=e239] [cursor=pointer]
+          - button "Projectile" [ref=e240] [cursor=pointer]
+          - button "Poulie d'Atwood" [ref=e241] [cursor=pointer]
+          - button "Ressort" [ref=e242] [cursor=pointer]
+          - button "Pendule" [ref=e243] [cursor=pointer]
+          - button "Circuit RC" [ref=e244] [cursor=pointer]

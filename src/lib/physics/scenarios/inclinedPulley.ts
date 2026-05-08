@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, deg2rad, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, normalOnSlope, FORCE_COLORS } from "../forces";
+import { makeTrail, sampleLine, sampleRecentTime } from "../trajectory";
 
 /**
  * SYSTÈME COMBINÉ : plan incliné + poulie au sommet + masse suspendue.
@@ -106,9 +107,28 @@ export function computeInclinedPulley(spec: DiagramSpec, constants: Record<strin
   const sizeM1 = spec.objects[0]?.size ?? 0.5;
   const sizeM2 = spec.objects[1]?.size ?? 0.45;
   const halfDiag1 = sizeM1 / 2;
-  const cxPhys1 = dCurrent * Math.cos(a) + halfDiag1 * -Math.sin(a);
-  const cyPhys1 = dCurrent * Math.sin(a) + halfDiag1 * Math.cos(a);
-  const c1 = toSVG({ x: cxPhys1, y: cyPhys1 }, vp);
+  const c1AtDistance = (distance: number) => toSVG({
+    x: distance * Math.cos(a) + halfDiag1 * -Math.sin(a),
+    y: distance * Math.sin(a) + halfDiag1 * Math.cos(a),
+  }, vp);
+  const c1 = c1AtDistance(dCurrent);
+
+  const m1PathStart = direction >= 0 ? dStart : 0.3;
+  const m1PathEnd = direction >= 0 ? slopeLen - 0.3 : dStart;
+  const m1Path = makeTrail("inclined_pulley_m1_theoretical_path", sampleLine(c1AtDistance(m1PathStart), c1AtDistance(m1PathEnd), 28), "theoretical");
+  if (m1Path) elements.push(m1Path);
+  const m1Trail = makeTrail(
+    "inclined_pulley_m1_temporal_trail",
+    sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 18, (tt) => {
+      const s = movement ? 0.5 * accelMag * tt * tt : 0;
+      const d = direction > 0
+        ? Math.min(slopeLen - 0.3, dStart + s)
+        : Math.max(0.3, dStart - s);
+      return c1AtDistance(d);
+    }),
+    "temporal"
+  );
+  if (m1Trail) elements.push(m1Trail);
 
   // Corde de m1 → poulie (le long de la pente)
   // Point d'accroche sur le bloc côté haut de la pente
@@ -133,6 +153,19 @@ export function computeInclinedPulley(spec: DiagramSpec, constants: Record<strin
   const m2BottomPhys = { x: pulleyPhys.x + 0.6, y: pulleyPhys.y - m2HangCurrent };
   const m2Top = toSVG(m2TopPhys, vp);
   const c2 = toSVG({ x: m2BottomPhys.x, y: m2BottomPhys.y - sizeM2 / 2 }, vp);
+  const c2AtHang = (hang: number) => toSVG({ x: m2TopPhys.x, y: m2TopPhys.y - hang - sizeM2 / 2 }, vp);
+  const m2Path = makeTrail("inclined_pulley_m2_theoretical_path", sampleLine(c2AtHang(0.3), c2AtHang(m2HangLen), 24), "theoretical");
+  if (m2Path) elements.push(m2Path);
+  const m2Trail = makeTrail(
+    "inclined_pulley_m2_temporal_trail",
+    sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 18, (tt) => {
+      const s = movement ? 0.5 * accelMag * tt * tt : 0;
+      const signedTravel = direction > 0 ? s : -s;
+      return c2AtHang(Math.max(0.3, Math.min(m2HangLen, m2HangInit + signedTravel)));
+    }),
+    "temporal"
+  );
+  if (m2Trail) elements.push(m2Trail);
 
   // Corde poulie → m2 : segment horizontal court + vertical
   elements.push({

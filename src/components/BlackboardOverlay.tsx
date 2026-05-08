@@ -137,12 +137,12 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 px-10 py-8 overflow-y-auto blackboard-scroll"
+      className="absolute inset-0 px-10 pt-8 pb-16 overflow-y-auto overflow-x-hidden blackboard-scroll"
       style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace" }}
     >
       <div
         ref={innerRef}
-        className="text-[13px] leading-[1.7] text-foreground/85"
+        className="text-[13px] leading-[1.7] text-foreground/85 min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
       >
         {lines.length === 0 && !typingLine && (
           <div className="text-foreground/35 italic">
@@ -157,7 +157,8 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
             <div
               key={i}
               className={
-                ln.divider
+                `min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${
+                  ln.divider
                   ? "text-foreground/40 mt-2 mb-0.5"
                   : ln.muted
                     ? `text-foreground/55 ${isCurrentStep ? "font-medium text-foreground/75" : ""}`
@@ -166,6 +167,7 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
                       : isLive
                         ? `text-primary/90 ${isCurrentStep ? "text-primary" : ""}`
                         : isCurrentStep ? "text-foreground" : "text-foreground/75"
+                }`
               }
             >
               {txt || "\u00A0"}
@@ -173,7 +175,7 @@ const BlackboardOverlay: React.FC<Props> = ({ step, index, data, constants, spee
           );
         })}
         {typingLine && (
-          <div className="text-foreground">
+          <div className="text-foreground min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {typingLine.out}
             <span className="inline-block w-1.5 h-3.5 bg-foreground/70 ml-0.5 align-middle animate-pulse" />
           </div>

@@ -1,6 +1,7 @@
 import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, AnimationFrame } from "@/types/cognitive";
 import { makeViewport, toSVG, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, customForce, FORCE_COLORS } from "../forces";
+import { makeTrail, sampleLine, sampleRecentTime } from "../trajectory";
 
 export function computeFreeFall(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
@@ -51,23 +52,22 @@ export function computeFreeFall(spec: DiagramSpec, constants: Record<string, num
   const center = toSVG({ x: 0, y: yPos + sizeM / 2 }, vp);
   objectCenters[objId] = center;
 
-  // Trail (trace)
-  if (frame.t > 0.05) {
-    const N = 20;
-    const points: Vec2[] = [];
-    for (let i = 0; i <= N; i++) {
-      const tt = (i / N) * frame.t;
+  const theoretical = makeTrail(
+    "freefall_theoretical_path",
+    sampleLine(toSVG({ x: 0, y: h + sizeM / 2 }, vp), toSVG({ x: 0, y: sizeM / 2 }, vp), 24),
+    "theoretical"
+  );
+  if (theoretical) elements.push(theoretical);
+
+  const temporal = makeTrail(
+    "freefall_temporal_trail",
+    sampleRecentTime(frame.t, Math.max(0.25, frame.duration * 0.35), 20, (tt) => {
       const yy = Math.max(0, h - 0.5 * g * tt * tt);
-      points.push(toSVG({ x: 0, y: yy + sizeM / 2 }, vp));
-    }
-    elements.push({
-      id: "trail",
-      type: "trail",
-      position: points[0],
-      end: points[points.length - 1],
-      meta: { points: JSON.stringify(points) },
-    });
-  }
+      return toSVG({ x: 0, y: yy + sizeM / 2 }, vp);
+    }),
+    "temporal"
+  );
+  if (temporal) elements.push(temporal);
 
   elements.push({
     id: objId,
