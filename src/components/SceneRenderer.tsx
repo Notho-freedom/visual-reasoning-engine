@@ -72,7 +72,20 @@ const SceneRenderer: React.FC<SceneRendererProps> = ({ scene, step, showForces =
         const points = JSON.parse(String(el.meta?.points ?? "[]")) as { x: number; y: number }[];
         if (points.length < 2) return null;
         const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-        return <path key={el.id} d={d} fill="none" stroke="hsl(var(--primary))" strokeWidth={1.5} strokeOpacity={0.5} strokeDasharray="3 3" />;
+        const variant = String(el.meta?.variant ?? "temporal");
+        const isTheoretical = variant === "theoretical";
+        return (
+          <path
+            key={el.id}
+            d={d}
+            fill="none"
+            stroke={isTheoretical ? "hsl(var(--muted-foreground))" : "hsl(var(--primary))"}
+            strokeWidth={isTheoretical ? 1.1 : 2}
+            strokeOpacity={isTheoretical ? 0.35 : 0.45}
+            strokeDasharray={isTheoretical ? "6 5" : "2 5"}
+            strokeLinecap="round"
+          />
+        );
       })}
 
       {scene.elements.filter((el) => el.type !== "trail").map((el) => {

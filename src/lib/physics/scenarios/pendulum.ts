@@ -2,6 +2,10 @@ import type { DiagramSpec, ResolvedScene, ResolvedElement, ResolvedForce, Vec2, 
 import { makeViewport, toSVG, deg2rad, forceArrowLength, makeWorldAxis } from "../coords";
 import { weight, tensionAlong, FORCE_COLORS } from "../forces";
 
+function pendulumMassPosition(L: number, angleRad: number): Vec2 {
+  return { x: L * Math.sin(angleRad), y: -L * Math.cos(angleRad) };
+}
+
 export function computePendulum(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
   const W = 1000;
   const H = 620;
@@ -29,8 +33,43 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
   });
 
   const pivot = toSVG({ x: 0, y: 0 }, vp);
-  const massPhys = { x: L * Math.sin(aNow), y: -L * Math.cos(aNow) };
+  const massPhys = pendulumMassPosition(L, aNow);
   const center = toSVG(massPhys, vp);
+
+  const theoreticalArcPoints = Array.from({ length: 49 }, (_, i) => {
+    const ratio = i / 48;
+    const angle = -a0 + ratio * 2 * a0;
+    return toSVG(pendulumMassPosition(L, angle), vp);
+  });
+  elements.push({
+    id: "pendulum_theoretical_path",
+    type: "trail",
+    position: pivot,
+    meta: {
+      variant: "theoretical",
+      points: JSON.stringify(theoreticalArcPoints),
+    },
+  });
+
+  const period = (2 * Math.PI) / omega;
+  const trailWindow = Math.min(period * 0.35, frame.duration);
+  const trailStart = Math.max(0, frame.t - trailWindow);
+  const trailSamples = 24;
+  const temporalTrailPoints = Array.from({ length: trailSamples }, (_, i) => {
+    const ratio = trailSamples === 1 ? 1 : i / (trailSamples - 1);
+    const sampleT = trailStart + (frame.t - trailStart) * ratio;
+    const angle = a0 * Math.cos(omega * sampleT);
+    return toSVG(pendulumMassPosition(L, angle), vp);
+  });
+  elements.push({
+    id: "pendulum_temporal_trail",
+    type: "trail",
+    position: pivot,
+    meta: {
+      variant: "temporal",
+      points: JSON.stringify(temporalTrailPoints),
+    },
+  });
 
   // Tige
   elements.push({
@@ -89,6 +128,7 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
   });
 
   const objectCenters: Record<string, Vec2> = { [objId]: center };
+  const objectLocalRotations: Record<string, number> = { [objId]: -angleDegNow };
   const forces: ResolvedForce[] = [];
 
   spec.forces.filter((f) => f.target === objId).forEach((f) => {
@@ -114,5 +154,5 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
   });
 
   const phaseLabel = `θ=${angleDegNow.toFixed(1)}°  T=${((2 * Math.PI) / omega).toFixed(2)}s`;
-  return { width: W, height: H, elements, forces, objectCenters, phaseLabel };
+  return { width: W, height: H, elements, forces, objectCenters, objectLocalRotations, phaseLabel };
 }
