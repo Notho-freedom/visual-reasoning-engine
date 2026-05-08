@@ -77,18 +77,17 @@ function detectScenario(exercise: string): { scenario: ScenarioId; confidence: n
 }
 
 // Variantes d'un scénario (orientation, etc.)
-function detectVariant(exercise: string, scenario: ScenarioId): Record<string, string | boolean | number> {
+function detectVariant(exercise: string, scenario: ScenarioId): Record<string, number> {
   const t = normalize(exercise);
-  const v: Record<string, string | boolean | number> = {};
+  const v: Record<string, number> = {};
   if (scenario === "spring") {
-    if (/\b(vertical|suspendu|pendu)\b/.test(t)) v.orientation = "vertical";
-    else v.orientation = "horizontal";
+    if (/\b(vertical|suspendu|pendu|accroche au plafond)\b/.test(t)) v.vertical = 1;
   }
   if (scenario === "projectile") {
     if (/\bhorizontal(ement)?\b/.test(t) && !/\bangle|theta\b/.test(t)) {
-      v.horizontalLaunch = true;
+      v.theta = 0;
     }
-    const hMatch = exercise.match(/(?:hauteur|altitude|du haut)[^.]{0,40}?(\d+(?:[.,]\d+)?)\s*(m|cm)\b/i);
+    const hMatch = exercise.match(/(?:hauteur|altitude|du haut|d'une (?:tour|falaise|plate-forme))[^.]{0,40}?(\d+(?:[.,]\d+)?)\s*(m|cm)\b/i);
     if (hMatch) {
       let h = parseFloat(hMatch[1].replace(",", "."));
       if (hMatch[2].toLowerCase() === "cm") h /= 100;
