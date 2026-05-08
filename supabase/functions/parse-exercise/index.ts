@@ -246,11 +246,11 @@ SCÉNARIOS AUTORISÉS
 ═══════════════════════════════════════════════════
 free_fall, inclined_plane, inclined_pulley, projectile, pulley, spring, pendulum, horizontal_motion, circuit, generic.
 
-VARIANTES (passées via params) :
-- spring + params.orientation = "vertical" → ressort vertical (masse suspendue, gravité active).
-- projectile + params.h0 > 0 → tir depuis une hauteur.
-- projectile + params.theta = 0 + params.h0 > 0 → tir horizontal depuis hauteur.
-- inclined_plane + objet avec force "applied" → plan incliné + force appliquée.
+VARIANTES (passées via params, valeurs NUMÉRIQUES uniquement) :
+- spring vertical : ajouter params.vertical = 1 (ressort suspendu, gravité active sur la masse).
+- projectile depuis hauteur : params.h0 = hauteur en m (+ params.v0, params.theta).
+- projectile horizontal (tir tendu) : params.theta = 0 ET params.h0 > 0.
+- inclined_plane + force appliquée : ajouter une force type "applied" avec direction { x, y } unitaire.
 
 ═══════════════════════════════════════════════════
 TYPES DE FORCES
