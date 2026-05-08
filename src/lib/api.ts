@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { CognitiveJSON } from "@/types/cognitive";
+import { validateAndPatch } from "@/lib/validation/cognitiveSchema";
 
 export async function parseExercise(
   exercise: string,
@@ -10,13 +11,12 @@ export async function parseExercise(
     body: { exercise, previousJson: previousJson ?? undefined, modificationPrompt },
   });
 
-  if (error) {
-    throw new Error(error.message || "Erreur lors de l'analyse");
-  }
+  if (error) throw new Error(error.message || "Erreur lors de l'analyse");
+  if (data?.error) throw new Error(data.error);
 
-  if (data?.error) {
-    throw new Error(data.error);
-  }
-
-  return data as CognitiveJSON;
+  const json = data as CognitiveJSON;
+  const report = validateAndPatch(json);
+  if (!report.ok) console.warn("[validateAndPatch]", report.warnings);
+  return json;
 }
+
