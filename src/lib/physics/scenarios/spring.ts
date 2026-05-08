@@ -6,9 +6,10 @@ import { weight, FORCE_COLORS, customForce } from "../forces";
  * Ressort horizontal OU vertical (selon params.orientation = "vertical").
  */
 export function computeSpring(spec: DiagramSpec, constants: Record<string, number>, frame: AnimationFrame): ResolvedScene {
-  const orientationParam = (spec.params as any).orientation;
-  const isVertical = orientationParam === 1 || orientationParam === "vertical" ||
-    (constants as any).orientation === 1;
+  const isVertical =
+    (spec.params as any).vertical === 1 ||
+    (constants as any).vertical === 1 ||
+    (spec.params as any).orientation === 1;
   if (isVertical) return computeSpringVertical(spec, constants, frame);
   return computeSpringHorizontal(spec, constants, frame);
 }
