@@ -6,441 +6,642 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Tu es un moteur d'analyse de problèmes de physique niveau Terminale C / Terminale S / Prépa.
+const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const MODEL_EXTRACTOR = "google/gemini-3-flash-preview";
+const MODEL_CONSTRUCTOR = "google/gemini-2.5-pro";
 
-═══════════════════════════════════════════════════
-PRINCIPE FONDAMENTAL — TU DÉCRIS LA PHYSIQUE, TU NE DESSINES PAS
-═══════════════════════════════════════════════════
-Tu ne donnes JAMAIS de coordonnées en pixels.
-Tu décris la scène en termes physiques (angle en degrés, distance en mètres, masse en kg).
-Un moteur de layout calculera la géométrie exacte (positions, vecteurs forces).
+// ════════════════════════════════════════════════════════════════════
+// HEURISTIQUE DÉTERMINISTE — détection de scénario
+// ════════════════════════════════════════════════════════════════════
+type ScenarioId =
+  | "free_fall" | "inclined_plane" | "inclined_pulley" | "projectile"
+  | "pulley" | "spring" | "pendulum" | "horizontal_motion" | "circuit" | "generic";
 
-═══════════════════════════════════════════════════
-DÉTECTION DU SCÉNARIO — RÈGLE ABSOLUE
-═══════════════════════════════════════════════════
-Lis l'énoncé COMPLET avant de choisir le scénario. Cherche les MOTS-CLÉS combinés.
-
-🔴 SYSTÈMES COMBINÉS — PRIORITAIRES
-Si l'énoncé mentionne 2 OBJETS RELIÉS (corde, ressort, ...), c'est forcément un SYSTÈME COMBINÉ.
-Ne JAMAIS choisir un scénario simple si plusieurs solides sont en interaction.
-
-| Énoncé contient... | Scénario à choisir |
-|---|---|
-| "plan incliné" + "poulie" + "masse suspendue/pendue" | inclined_pulley |
-| "plan incliné" + "corde" + "deuxième masse" | inclined_pulley |
-| "deux masses" + "poulie" (seul) | pulley |
-| "ressort" + "incliné" | spring (avec mention) |
-| "circuit" + ("résistance" ou "condensateur" ou "batterie") | circuit |
-
-🟢 SCÉNARIOS SIMPLES
-| Énoncé | Scénario |
-|---|---|
-| "lâché", "sans vitesse initiale", "tombe" | free_fall |
-| "plan incliné" SEUL (un seul objet) | inclined_plane |
-| "lancé", "angle θ", "vitesse initiale" | projectile |
-| "ressort" + "comprimé/étiré" | spring |
-| "pendule", "oscille" | pendulum |
-| "force horizontale", "table" | horizontal_motion |
-
-═══════════════════════════════════════════════════
-TYPES DE FORCES (utilise EXACTEMENT ces valeurs)
-═══════════════════════════════════════════════════
-- "weight" : poids (mg, vers le bas) — pas de direction
-- "normal" : réaction normale du support — pas de direction
-- "friction" : frottement — orientation: "up_slope" ou "down_slope"
-- "tension" : tension de corde — pas de direction
-- "spring" : force de rappel ressort — pas de direction
-- "applied" : force appliquée — direction {x, y} unitaire (Y vers le haut)
-- "custom" : force quelconque — direction {x, y}
-
-═══════════════════════════════════════════════════
-TIMELINE — STRUCTURE DES ÉTAPES
-═══════════════════════════════════════════════════
-Types d'étapes :
-- "concept" : explication d'un concept physique
-- "diagram" : présentation du schéma initial (t_ratio: 0)
-- "equation" : pose d'une équation
-- "projection" : projection des forces sur le repère local — DOIT inclure projection_target (id de l'objet)
-- "substitution" : substitution numérique
-- "solve" : résolution
-- "motion" : analyse du mouvement (peut avoir t_ratio variable)
-
-CHAMP t_ratio (TRÈS IMPORTANT) :
-Position dans l'animation, valeur entre 0 et 1.
-- Étape "schéma initial" / "bilan des forces" → t_ratio: 0
-- Étape "à mi-parcours" / "à la moitié" → t_ratio: 0.5
-- Étape "à l'impact" / "à la fin" / "résultat final" → t_ratio: 1
-- Étape "phase de compression" → t_ratio: 0.4 (avant relâchement)
-
-CHAMP projection_target (pour étapes "projection") :
-ID de l'objet sur le repère local duquel on projette les forces.
-
-═══════════════════════════════════════════════════
-EXEMPLES COMPLETS
-═══════════════════════════════════════════════════
-
-▼ EXEMPLE CRITIQUE — SYSTÈME COMBINÉ : plan incliné + poulie + masse suspendue
-Énoncé: "Un bloc de 2 kg est placé sur un plan incliné de 30°. Il est relié par une corde
-passant sur une poulie idéale à une masse suspendue de 1 kg. μ=0.2. g=9.81.
-Déterminer l'accélération et la tension."
-
-{
-  "diagram": {
-    "scenario": "inclined_pulley",
-    "params": { "angle": 30, "length": 4 },
-    "showAxis": true,
-    "objects": [
-      { "id": "m1", "type": "block", "label": "m₁ = 2 kg", "mass": 2, "size": 0.5 },
-      { "id": "m2", "type": "block", "label": "m₂ = 1 kg", "mass": 1, "size": 0.45 }
-    ],
-    "forces": [
-      { "id": "P1", "target": "m1", "type": "weight", "label": "P₁", "magnitude": "m₁g" },
-      { "id": "N1", "target": "m1", "type": "normal", "label": "N", "magnitude": "N" },
-      { "id": "T1", "target": "m1", "type": "tension", "label": "T", "magnitude": "T" },
-      { "id": "f1", "target": "m1", "type": "friction", "label": "f", "magnitude": "μN" },
-      { "id": "P2", "target": "m2", "type": "weight", "label": "P₂", "magnitude": "m₂g" },
-      { "id": "T2", "target": "m2", "type": "tension", "label": "T", "magnitude": "T" }
-    ]
-  },
-  "constants": { "g": 9.81, "m1": 2, "m2": 1, "alpha": 30, "mu": 0.2 },
-  "timeline": [
-    { "id": "s1", "type": "diagram", "title": "Schéma du système", "description": "Bloc m₁ sur plan incliné, m₂ pendue à la corde via la poulie.", "t_ratio": 0, "highlight_elements": ["m1", "m2", "slope", "pulley"] },
-    { "id": "s2", "type": "concept", "title": "Bilan des forces sur m₁", "description": "Poids, normale, tension, frottement.", "t_ratio": 0, "highlight_forces": ["P1","N1","T1","f1"] },
-    { "id": "s3", "type": "projection", "title": "Projection sur axes liés à la pente", "formula": "x' parallèle à la pente, y' perpendiculaire", "t_ratio": 0, "projection_target": "m1", "highlight_forces": ["P1","N1","T1","f1"] },
-    { "id": "s4", "type": "equation", "title": "PFD sur m₁ (axe x')", "formula": "T - m₁g·sinα - μm₁g·cosα = m₁a", "t_ratio": 0.1 },
-    { "id": "s5", "type": "equation", "title": "PFD sur m₂ (axe vertical)", "formula": "m₂g - T = m₂a", "t_ratio": 0.1, "highlight_forces": ["P2","T2"] },
-    { "id": "s6", "type": "solve", "title": "Accélération", "formula": "a = (m₂g - m₁g·sinα - μm₁g·cosα)/(m₁+m₂)", "t_ratio": 0.5 },
-    { "id": "s7", "type": "substitution", "title": "Application numérique", "formula": "a = (1·9.81 - 2·9.81·0.5 - 0.2·2·9.81·0.866)/3", "t_ratio": 0.5 },
-    { "id": "s8", "type": "solve", "title": "Tension", "formula": "T = m₂(g - a)", "t_ratio": 1 }
-  ]
+function normalize(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-▼ Plan incliné simple (UN SEUL objet)
-{
-  "diagram": {
-    "scenario": "inclined_plane",
-    "params": { "angle": 30, "length": 4 },
-    "showAxis": true,
-    "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 5, "size": 0.6 }],
-    "forces": [
-      { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
-      { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" },
-      { "id": "f", "target": "block", "type": "friction", "label": "f", "magnitude": "μN" }
-    ]
-  },
-  "constants": { "g": 9.81, "m": 5, "alpha": 30, "mu": 0.2 }
-}
+function detectScenario(exercise: string): { scenario: ScenarioId; confidence: number; hints: string[] } {
+  const t = normalize(exercise);
+  const hints: string[] = [];
+  const has = (re: RegExp) => re.test(t);
 
-▼ Chute libre
-{
-  "diagram": {
-    "scenario": "free_fall",
-    "params": { "height": 20 },
-    "showAxis": true,
-    "objects": [{ "id": "ball", "type": "ball", "label": "m", "mass": 1, "size": 0.4 }],
-    "forces": [{ "id": "P", "target": "ball", "type": "weight", "label": "P", "magnitude": "mg" }]
-  },
-  "constants": { "g": 9.81, "m": 1, "h": 20 }
-}
+  const incline = has(/\bplan incline\b|\bpente\b|incline(e|s)? (de|d'un)\b|\binclinaison\b/);
+  const pulley = has(/\bpoulie\b|\bpoulies\b/);
+  const rope = has(/\bcorde\b|\bfil(?! e)\b|\bcable\b/);
+  const twoMasses = has(/\b(deux|2)\s+(masses|blocs|solides|corps|objets)\b/) ||
+    has(/\bm[12]\b.*\bm[12]\b/) ||
+    has(/\bmasse\s+m1\b.*\bmasse\s+m2\b/);
+  const suspendedMass = has(/\b(masse\s+)?(suspendue|pendue|accrochee|accroche|reliee|relie)\b/);
+  const spring = has(/\bressort\b/);
+  const vertical = has(/\bvertical(e|ement)?\b|\bsuspendu(e)?\b|\bpendu(e)?\b/);
+  const horizontal = has(/\bhorizontal(e|ement)?\b|\bsur (une |la |un )?table\b|\bsur (le |un )?sol\b/);
+  const projectile = has(/\b(projectile|lance(e)?|tire(e)?|tir|jete(e)?|propul(se|sion))\b/);
+  const angleTheta = has(/\b(angle|theta|inclinaison)\b.*\b\d/);
+  const pendulum = has(/\bpendule\b|\boscille|oscillation|fil de longueur\b/);
+  const fall = has(/\b(chute|tombe|lache(e)?|abandonne(e)?|sans vitesse initiale|en chute libre|laisse tomber)\b/);
+  const force = has(/\bforce (horizontale|appliquee|f\b|\\?vec\{f\})/);
+  const friction = has(/\bfrott(ement|ements|er)\b|\bcoefficient (de )?frottement\b|\bμ\b|\bmu\b/);
+  const circuit = has(/\bcircuit\b|\bresistance\b|\bcondensateur\b|\bbobine\b|\bbatterie\b|\bgenerateur\b/);
+  const pendulumFil = has(/\bfil (de longueur|inextensible)\b/) && !rope;
 
-▼ Tir oblique
-{
-  "diagram": {
-    "scenario": "projectile",
-    "params": { "v0": 20, "theta": 45 },
-    "objects": [{ "id": "p", "type": "ball", "label": "m", "mass": 0.5, "size": 0.4 }],
-    "forces": [{ "id": "P", "target": "p", "type": "weight", "label": "P", "magnitude": "mg" }]
-  },
-  "constants": { "g": 9.81, "m": 0.5, "v0": 20, "theta": 45 }
-}
+  if (incline) hints.push("plan incliné");
+  if (pulley) hints.push("poulie");
+  if (rope) hints.push("corde/fil");
+  if (twoMasses || suspendedMass) hints.push("2+ masses");
+  if (spring) hints.push("ressort");
+  if (projectile) hints.push("projectile/tir");
+  if (pendulum || pendulumFil) hints.push("pendule");
+  if (fall) hints.push("chute libre");
+  if (circuit) hints.push("circuit");
+  if (friction) hints.push("frottement");
 
-▼ Poulie simple (Atwood)
-{
-  "diagram": {
-    "scenario": "pulley",
-    "params": { "length": 2.5 },
-    "objects": [
-      { "id": "m1", "type": "block", "label": "m₁", "mass": 2 },
-      { "id": "m2", "type": "block", "label": "m₂", "mass": 3 }
-    ],
-    "forces": [
-      { "id": "P1", "target": "m1", "type": "weight", "label": "P₁", "magnitude": "m₁g" },
-      { "id": "T1", "target": "m1", "type": "tension", "label": "T", "magnitude": "T" },
-      { "id": "P2", "target": "m2", "type": "weight", "label": "P₂", "magnitude": "m₂g" },
-      { "id": "T2", "target": "m2", "type": "tension", "label": "T", "magnitude": "T" }
-    ]
-  },
-  "constants": { "g": 9.81, "m1": 2, "m2": 3 }
-}
-
-▼ Pendule
-{
-  "diagram": {
-    "scenario": "pendulum",
-    "params": { "length": 1.2, "angle": 25 },
-    "objects": [{ "id": "bob", "type": "ball", "label": "m", "mass": 0.5, "size": 0.2 }],
-    "forces": [
-      { "id": "P", "target": "bob", "type": "weight", "label": "P", "magnitude": "mg" },
-      { "id": "T", "target": "bob", "type": "tension", "label": "T", "magnitude": "T" }
-    ]
-  },
-  "constants": { "g": 9.81, "m": 0.5, "L": 1.2, "theta": 25 }
-}
-
-▼ Ressort horizontal
-{
-  "diagram": {
-    "scenario": "spring",
-    "params": { "k": 80, "x": 0.2, "L": 1.2 },
-    "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 1, "size": 0.5 }],
-    "forces": [
-      { "id": "Fr", "target": "block", "type": "spring", "label": "F", "magnitude": "-kx" },
-      { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
-      { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" }
-    ]
-  },
-  "constants": { "g": 9.81, "m": 1, "k": 80, "x": 0.2, "L": 1.2 }
-}
-
-▼ Mouvement horizontal
-{
-  "diagram": {
-    "scenario": "horizontal_motion",
-    "params": {},
-    "objects": [{ "id": "block", "type": "block", "label": "m", "mass": 4, "size": 0.6 }],
-    "forces": [
-      { "id": "F", "target": "block", "type": "applied", "label": "F", "direction": { "x": 1, "y": 0 }, "value": 20 },
-      { "id": "P", "target": "block", "type": "weight", "label": "P", "magnitude": "mg" },
-      { "id": "N", "target": "block", "type": "normal", "label": "N", "magnitude": "N" },
-      { "id": "f", "target": "block", "type": "friction", "label": "f", "orientation": "down_slope" }
-    ]
-  },
-  "constants": { "g": 9.81, "m": 4, "mu": 0.1 }
-}
-
-▼ Circuit RC
-{
-  "diagram": {
-    "scenario": "circuit",
-    "params": {},
-    "objects": [],
-    "forces": [],
-    "circuit": [
-      { "id": "E", "type": "battery", "label": "E", "value": 12, "unit": "V" },
-      { "id": "R", "type": "resistor", "label": "R", "value": 100, "unit": "Ω" },
-      { "id": "C", "type": "capacitor", "label": "C", "value": 10, "unit": "µF" }
-    ]
-  },
-  "constants": { "E": 12, "R": 100, "C": 0.00001 }
-}
-
-═══════════════════════════════════════════════════
-RÈGLE ABSOLUE
-═══════════════════════════════════════════════════
-1. Détecte les SYSTÈMES COMBINÉS en priorité (plusieurs objets reliés).
-2. Mets t_ratio sur CHAQUE étape de la timeline.
-3. Pour les étapes "projection", indique projection_target.
-4. Réponds UNIQUEMENT via l'outil parse_physics_exercise. AUCUNE coordonnée pixel.`;
-
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  // Décisions ordonnées (les + spécifiques d'abord)
+  if (incline && (pulley || (rope && (twoMasses || suspendedMass)))) {
+    return { scenario: "inclined_pulley", confidence: 0.95, hints };
   }
+  if (circuit) return { scenario: "circuit", confidence: 0.9, hints };
+  if (pulley && (twoMasses || suspendedMass)) {
+    return { scenario: "pulley", confidence: 0.9, hints };
+  }
+  if (spring) return { scenario: "spring", confidence: 0.85, hints };
+  if (pendulum || pendulumFil) return { scenario: "pendulum", confidence: 0.9, hints };
+  if (projectile && (angleTheta || has(/\bv0\b|\bvitesse initiale\b/))) {
+    return { scenario: "projectile", confidence: 0.9, hints };
+  }
+  if (incline) return { scenario: "inclined_plane", confidence: 0.85, hints };
+  if (fall) return { scenario: "free_fall", confidence: 0.9, hints };
+  if (force && horizontal) return { scenario: "horizontal_motion", confidence: 0.8, hints };
+
+  return { scenario: "generic", confidence: 0.3, hints };
+}
+
+// Variantes d'un scénario (orientation, etc.)
+function detectVariant(exercise: string, scenario: ScenarioId): Record<string, string | boolean | number> {
+  const t = normalize(exercise);
+  const v: Record<string, string | boolean | number> = {};
+  if (scenario === "spring") {
+    if (/\b(vertical|suspendu|pendu)\b/.test(t)) v.orientation = "vertical";
+    else v.orientation = "horizontal";
+  }
+  if (scenario === "projectile") {
+    if (/\bhorizontal(ement)?\b/.test(t) && !/\bangle|theta\b/.test(t)) {
+      v.horizontalLaunch = true;
+    }
+    const hMatch = exercise.match(/(?:hauteur|altitude|du haut)[^.]{0,40}?(\d+(?:[.,]\d+)?)\s*(m|cm)\b/i);
+    if (hMatch) {
+      let h = parseFloat(hMatch[1].replace(",", "."));
+      if (hMatch[2].toLowerCase() === "cm") h /= 100;
+      v.h0 = h;
+    }
+  }
+  return v;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PASSE 1 — EXTRACTEUR
+// ════════════════════════════════════════════════════════════════════
+const EXTRACTOR_SYSTEM = `Tu es un extracteur d'énoncés de physique en français.
+Pour chaque énoncé, retourne via l'outil:
+- parameters: TOUS les nombres mentionnés avec leur symbole, valeur, unité d'origine et rôle.
+  Rôles autorisés: angle, mass, friction_coef, initial_speed, height, length, spring_const,
+  resistance, capacitance, voltage, current, gravity, distance, time, force_value, other.
+- entities: les solides/objets distincts (id court, label lisible, type: block|ball|particle|mass|circuit_component).
+- liaisons: liens physiques (corde entre m1 et m2, ressort entre mur et m, poulie reliant m1 et m2…).
+- question: ce qu'on demande de calculer (texte court, ex: "accélération et tension").
+- keywords: liste des mots-clés physiques détectés.
+N'INVENTE RIEN. Si une valeur n'est pas dans l'énoncé, ne la mets pas.`;
+
+const EXTRACTOR_TOOL = {
+  type: "function",
+  function: {
+    name: "extract_exercise",
+    description: "Extrait les paramètres bruts d'un énoncé de physique",
+    parameters: {
+      type: "object",
+      properties: {
+        parameters: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              symbol: { type: "string" },
+              value: { type: "number" },
+              unit: { type: "string" },
+              role: { type: "string" },
+            },
+            required: ["symbol", "value", "role"],
+          },
+        },
+        entities: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              label: { type: "string" },
+              type: { type: "string" },
+            },
+            required: ["id", "type"],
+          },
+        },
+        liaisons: { type: "array", items: { type: "string" } },
+        question: { type: "string" },
+        keywords: { type: "array", items: { type: "string" } },
+      },
+      required: ["parameters", "entities"],
+    },
+  },
+};
+
+// Conversion → SI
+function toSI(value: number, unit: string | undefined, role: string): number {
+  const u = (unit ?? "").toLowerCase().trim();
+  if (!u) return value;
+  if (role === "mass") {
+    if (u === "g" || u === "gramme" || u === "grammes") return value / 1000;
+    if (u === "mg") return value / 1e6;
+    if (u === "t" || u === "tonne") return value * 1000;
+  }
+  if (role === "length" || role === "height" || role === "distance") {
+    if (u === "cm") return value / 100;
+    if (u === "mm") return value / 1000;
+    if (u === "km") return value * 1000;
+  }
+  if (role === "initial_speed") {
+    if (u === "km/h") return value / 3.6;
+  }
+  if (role === "angle") {
+    if (u === "rad" || u === "radian" || u === "radians") return (value * 180) / Math.PI;
+  }
+  if (role === "force_value") {
+    if (u === "kn") return value * 1000;
+    if (u === "mn") return value / 1000;
+  }
+  if (role === "capacitance") {
+    if (u === "µf" || u === "uf" || u === "microfarad") return value * 1e-6;
+    if (u === "nf") return value * 1e-9;
+    if (u === "pf") return value * 1e-12;
+  }
+  if (role === "resistance") {
+    if (u === "kω" || u === "kohm" || u === "kohms") return value * 1000;
+    if (u === "mω" || u === "mohm") return value * 1e6;
+  }
+  return value;
+}
+
+interface ExtractedParam { symbol: string; value: number; unit?: string; role: string }
+interface Extraction {
+  parameters: ExtractedParam[];
+  entities: { id: string; label?: string; type: string }[];
+  liaisons?: string[];
+  question?: string;
+  keywords?: string[];
+}
+
+async function callExtractor(apiKey: string, exercise: string): Promise<Extraction | null> {
+  try {
+    const r = await fetch(GATEWAY_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL_EXTRACTOR,
+        messages: [
+          { role: "system", content: EXTRACTOR_SYSTEM },
+          { role: "user", content: exercise },
+        ],
+        tools: [EXTRACTOR_TOOL],
+        tool_choice: { type: "function", function: { name: "extract_exercise" } },
+      }),
+    });
+    if (!r.ok) {
+      console.error("Extractor failed", r.status, await r.text());
+      return null;
+    }
+    const j = await r.json();
+    const raw = j.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+    if (!raw) return null;
+    return JSON.parse(raw) as Extraction;
+  } catch (e) {
+    console.error("Extractor exception", e);
+    return null;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PASSE 2 — CONSTRUCTEUR (system prompt enrichi)
+// ════════════════════════════════════════════════════════════════════
+const CONSTRUCTOR_SYSTEM = `Tu es un moteur d'analyse de problèmes de physique niveau Terminale C / Prépa.
+
+═══════════════════════════════════════════════════
+PRINCIPE : tu décris la PHYSIQUE, jamais les pixels.
+═══════════════════════════════════════════════════
+Tu reçois (1) l'énoncé (2) une extraction des paramètres (3) un scénario suggéré par heuristique.
+Respecte le scénario suggéré sauf si physiquement impossible.
+N'INVENTE PAS de valeurs : utilise UNIQUEMENT celles de l'énoncé/extraction.
+Tous les nombres de l'extraction DOIVENT apparaître dans \`constants\`.
+
+═══════════════════════════════════════════════════
+SCÉNARIOS AUTORISÉS
+═══════════════════════════════════════════════════
+free_fall, inclined_plane, inclined_pulley, projectile, pulley, spring, pendulum, horizontal_motion, circuit, generic.
+
+VARIANTES (passées via params) :
+- spring + params.orientation = "vertical" → ressort vertical (masse suspendue, gravité active).
+- projectile + params.h0 > 0 → tir depuis une hauteur.
+- projectile + params.theta = 0 + params.h0 > 0 → tir horizontal depuis hauteur.
+- inclined_plane + objet avec force "applied" → plan incliné + force appliquée.
+
+═══════════════════════════════════════════════════
+TYPES DE FORCES
+═══════════════════════════════════════════════════
+weight, normal, friction, tension, applied (avec direction unitaire), spring, drag, custom.
+Pour "friction", orientation: "up_slope" | "down_slope" | "opposite_motion".
+
+═══════════════════════════════════════════════════
+TIMELINE
+═══════════════════════════════════════════════════
+Types d'étapes : concept, diagram, equation, projection, substitution, solve, motion.
+- t_ratio ∈ [0,1] OBLIGATOIRE par étape.
+  diagram/bilan → 0 ; mi-parcours → 0.5 ; fin/impact → 1.
+- "projection" doit avoir projection_target = id de l'objet.
+- Construis la timeline pour répondre à LA QUESTION POSÉE.
+
+═══════════════════════════════════════════════════
+RÈGLES DE COHÉRENCE STRICTES
+═══════════════════════════════════════════════════
+1. Chaque \`forces[].target\` DOIT exister dans \`objects[]\`.
+2. inclined_plane / inclined_pulley : params.angle ET params.length OBLIGATOIRES.
+3. inclined_pulley : exactement 2 objets, chacun avec une force "tension".
+4. projectile : params.v0 obligatoire ; params.theta obligatoire (0 si tir horizontal).
+5. pendulum : params.length ET params.angle obligatoires.
+6. spring : params.k obligatoire.
+7. circuit : circuit[] non vide.
+8. Tout paramètre numérique de l'énoncé apparaît dans constants (avec son symbole canonique : g, m, m1, m2, alpha, mu, v0, theta, h, h0, k, x, L, R, C, E, …).
+
+Réponds UNIQUEMENT via l'outil parse_physics_exercise.`;
+
+const CONSTRUCTOR_TOOL = {
+  type: "function",
+  function: {
+    name: "parse_physics_exercise",
+    description: "Retourne l'analyse structurée d'un problème de physique en termes PHYSIQUES.",
+    parameters: {
+      type: "object",
+      properties: {
+        meta: {
+          type: "object",
+          properties: {
+            domain: { type: "string" },
+            scenario: { type: "string" },
+            title: { type: "string" },
+          },
+          required: ["domain", "scenario", "title"],
+        },
+        constants: { type: "object", additionalProperties: { type: "number" } },
+        diagram: {
+          type: "object",
+          properties: {
+            scenario: {
+              type: "string",
+              enum: ["free_fall", "inclined_plane", "inclined_pulley", "projectile", "pulley", "spring", "pendulum", "horizontal_motion", "circuit", "generic"],
+            },
+            params: { type: "object", additionalProperties: { type: "number" } },
+            showAxis: { type: "boolean" },
+            objects: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  type: { type: "string", enum: ["block", "ball", "particle", "mass"] },
+                  label: { type: "string" },
+                  mass: { type: "number" },
+                  anchor: { type: "string" },
+                  distance: { type: "number" },
+                  size: { type: "number" },
+                },
+                required: ["id", "type"],
+              },
+            },
+            forces: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  target: { type: "string" },
+                  type: {
+                    type: "string",
+                    enum: ["weight", "normal", "friction", "tension", "applied", "spring", "drag", "reaction", "custom"],
+                  },
+                  label: { type: "string" },
+                  magnitude: { type: "string" },
+                  value: { type: "number" },
+                  direction: {
+                    type: "object",
+                    properties: { x: { type: "number" }, y: { type: "number" } },
+                  },
+                  orientation: { type: "string" },
+                  color: { type: "string" },
+                },
+                required: ["id", "target", "type", "label"],
+              },
+            },
+            circuit: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  type: { type: "string", enum: ["battery", "resistor", "capacitor", "wire"] },
+                  label: { type: "string" },
+                  value: { type: "number" },
+                  unit: { type: "string" },
+                },
+                required: ["id", "type"],
+              },
+            },
+          },
+          required: ["scenario", "params", "objects", "forces"],
+        },
+        timeline: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              type: { type: "string", enum: ["concept", "equation", "substitution", "solve", "diagram", "motion", "projection"] },
+              title: { type: "string" },
+              description: { type: "string" },
+              formula: { type: "string" },
+              result: { type: "object", additionalProperties: {} },
+              dependencies: { type: "array", items: { type: "string" } },
+              highlight_elements: { type: "array", items: { type: "string" } },
+              highlight_forces: { type: "array", items: { type: "string" } },
+              t_ratio: { type: "number" },
+              projection_target: { type: "string" },
+            },
+            required: ["id", "type", "title"],
+          },
+        },
+      },
+      required: ["meta", "constants", "diagram", "timeline"],
+    },
+  },
+};
+
+// ════════════════════════════════════════════════════════════════════
+// VALIDATION (règles physiques)
+// ════════════════════════════════════════════════════════════════════
+interface ValidationResult { ok: boolean; errors: string[] }
+
+function validate(json: any): ValidationResult {
+  const errors: string[] = [];
+  if (!json || typeof json !== "object") return { ok: false, errors: ["JSON invalide"] };
+  const d = json.diagram;
+  if (!d) errors.push("diagram manquant");
+  else {
+    const objIds = new Set((d.objects ?? []).map((o: any) => o.id));
+    (d.forces ?? []).forEach((f: any, i: number) => {
+      if (!objIds.has(f.target)) errors.push(`forces[${i}].target='${f.target}' n'existe pas dans objects`);
+    });
+    const sc = d.scenario;
+    const p = d.params ?? {};
+    if (sc === "inclined_plane" || sc === "inclined_pulley") {
+      if (typeof p.angle !== "number") errors.push(`params.angle requis pour ${sc}`);
+      if (typeof p.length !== "number") errors.push(`params.length requis pour ${sc}`);
+      if (p.angle != null && (p.angle <= 0 || p.angle >= 90)) errors.push(`angle hors plage (0,90): ${p.angle}`);
+    }
+    if (sc === "inclined_pulley" && (d.objects ?? []).length !== 2) {
+      errors.push(`inclined_pulley exige 2 objets, ${(d.objects ?? []).length} fourni(s)`);
+    }
+    if (sc === "projectile") {
+      if (typeof p.v0 !== "number") errors.push("params.v0 requis pour projectile");
+      if (typeof p.theta !== "number") errors.push("params.theta requis pour projectile (0 si horizontal)");
+    }
+    if (sc === "pendulum") {
+      if (typeof p.length !== "number") errors.push("params.length requis pour pendulum");
+      if (typeof p.angle !== "number") errors.push("params.angle requis pour pendulum");
+    }
+    if (sc === "spring") {
+      if (typeof p.k !== "number") errors.push("params.k requis pour spring");
+    }
+    if (sc === "circuit" && (!d.circuit || d.circuit.length === 0)) {
+      errors.push("circuit[] requis et non vide pour scenario=circuit");
+    }
+    (d.objects ?? []).forEach((o: any, i: number) => {
+      if (o.mass != null && o.mass <= 0) errors.push(`objects[${i}].mass <= 0`);
+    });
+  }
+  if (!Array.isArray(json.timeline) || json.timeline.length === 0) errors.push("timeline vide");
+  else {
+    json.timeline.forEach((s: any, i: number) => {
+      if (s.t_ratio != null && (s.t_ratio < 0 || s.t_ratio > 1)) {
+        errors.push(`timeline[${i}].t_ratio hors [0,1]`);
+      }
+      if (s.type === "projection" && !s.projection_target) {
+        errors.push(`timeline[${i}] (projection) sans projection_target`);
+      }
+    });
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+// Patch local minimal — comble les manques sûrs
+function patchDefaults(json: any): any {
+  if (!json?.diagram) return json;
+  const d = json.diagram;
+  d.params = d.params ?? {};
+  if (d.scenario === "inclined_plane" || d.scenario === "inclined_pulley") {
+    if (typeof d.params.angle !== "number") d.params.angle = 30;
+    if (typeof d.params.length !== "number") d.params.length = 4;
+  }
+  if (d.scenario === "projectile") {
+    if (typeof d.params.v0 !== "number") d.params.v0 = 20;
+    if (typeof d.params.theta !== "number") d.params.theta = 45;
+  }
+  if (d.scenario === "pendulum") {
+    if (typeof d.params.length !== "number") d.params.length = 1.2;
+    if (typeof d.params.angle !== "number") d.params.angle = 20;
+  }
+  if (d.scenario === "spring") {
+    if (typeof d.params.k !== "number") d.params.k = 50;
+  }
+  // Filtrer forces orphelines
+  const ids = new Set((d.objects ?? []).map((o: any) => o.id));
+  d.forces = (d.forces ?? []).filter((f: any) => ids.has(f.target));
+  if (Array.isArray(json.timeline)) {
+    json.timeline.forEach((s: any) => {
+      if (typeof s.t_ratio !== "number") s.t_ratio = 0;
+      s.t_ratio = Math.max(0, Math.min(1, s.t_ratio));
+    });
+  }
+  return json;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CONSTRUCTEUR
+// ════════════════════════════════════════════════════════════════════
+async function callConstructor(
+  apiKey: string,
+  userMessage: string,
+): Promise<{ status: number; json?: any; error?: string }> {
+  const resp = await fetch(GATEWAY_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL_CONSTRUCTOR,
+      messages: [
+        { role: "system", content: CONSTRUCTOR_SYSTEM },
+        { role: "user", content: userMessage },
+      ],
+      tools: [CONSTRUCTOR_TOOL],
+      tool_choice: { type: "function", function: { name: "parse_physics_exercise" } },
+    }),
+  });
+  if (!resp.ok) {
+    if (resp.status === 429) return { status: 429, error: "Trop de requêtes. Réessayez dans un instant." };
+    if (resp.status === 402) return { status: 402, error: "Crédits IA épuisés. Ajoutez des crédits dans les paramètres." };
+    const txt = await resp.text();
+    console.error("Constructor gateway error", resp.status, txt);
+    return { status: 500, error: "Erreur du moteur IA" };
+  }
+  const data = await resp.json();
+  const raw = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+  if (!raw) return { status: 500, error: "L'IA n'a pas retourné de plan structuré" };
+  try {
+    return { status: 200, json: JSON.parse(raw) };
+  } catch (e) {
+    return { status: 500, error: "JSON malformé" };
+  }
+}
+
+function buildUserMessage(args: {
+  exercise: string;
+  extraction: Extraction | null;
+  scenario: ScenarioId;
+  hints: string[];
+  variant: Record<string, any>;
+  isModification: boolean;
+  previousJson?: unknown;
+  modificationPrompt?: string;
+  retryErrors?: string[];
+}): string {
+  const { exercise, extraction, scenario, hints, variant, isModification, previousJson, modificationPrompt, retryErrors } = args;
+  const ctxBlocks: string[] = [];
+  ctxBlocks.push(`SCÉNARIO SUGGÉRÉ (heuristique) : ${scenario}${hints.length ? `  [signaux: ${hints.join(", ")}]` : ""}`);
+  if (Object.keys(variant).length) ctxBlocks.push(`VARIANTE DÉTECTÉE : ${JSON.stringify(variant)}`);
+  if (extraction) {
+    const params = (extraction.parameters ?? []).map(p =>
+      `  - ${p.symbol} = ${p.value}${p.unit ? " " + p.unit : ""}  (rôle: ${p.role}, SI: ${toSI(p.value, p.unit, p.role)})`
+    ).join("\n");
+    ctxBlocks.push(`PARAMÈTRES EXTRAITS (TOUS doivent apparaître dans constants) :\n${params || "  (aucun)"}`);
+    if (extraction.entities?.length) {
+      ctxBlocks.push(`ENTITÉS : ${extraction.entities.map(e => `${e.id}(${e.type})`).join(", ")}`);
+    }
+    if (extraction.liaisons?.length) ctxBlocks.push(`LIAISONS : ${extraction.liaisons.join(" ; ")}`);
+    if (extraction.question) ctxBlocks.push(`QUESTION POSÉE : ${extraction.question}`);
+  }
+  if (retryErrors?.length) {
+    ctxBlocks.push(`⚠️ PRÉCÉDENTE TENTATIVE INVALIDE — corrige ces erreurs :\n  - ${retryErrors.join("\n  - ")}`);
+  }
+  const ctx = ctxBlocks.join("\n\n");
+
+  if (isModification) {
+    return `Tu reçois un schéma cognitif EXISTANT et une instruction de MODIFICATION.
+
+ÉNONCÉ ORIGINAL :
+${exercise}
+
+${ctx}
+
+SCHÉMA EXISTANT :
+${JSON.stringify(previousJson, null, 2)}
+
+MODIFICATION DEMANDÉE :
+${modificationPrompt}
+
+Renvoie le schéma COMPLET mis à jour, en respectant le scénario suggéré et toutes les règles de cohérence.`;
+  }
+
+  return `Analyse cet exercice et retourne le plan cognitif structuré.
+
+ÉNONCÉ :
+${exercise}
+
+${ctx}
+
+Respecte le scénario suggéré. Mets TOUS les paramètres extraits dans constants. Construis la timeline pour répondre à la question.`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// HANDLER
+// ════════════════════════════════════════════════════════════════════
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { exercise, previousJson, modificationPrompt } = await req.json();
     if (!exercise || typeof exercise !== "string") {
-      return new Response(
-        JSON.stringify({ error: "Le champ 'exercise' est requis" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Le champ 'exercise' est requis" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
+    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!apiKey) throw new Error("LOVABLE_API_KEY non configuré");
 
     const isModification = !!previousJson && !!modificationPrompt;
-    const userMessage = isModification
-      ? `Tu reçois un schéma cognitif EXISTANT et une instruction de MODIFICATION de l'utilisateur.\n\nÉNONCÉ ORIGINAL :\n${exercise}\n\nSCHÉMA EXISTANT (JSON cognitif) :\n${JSON.stringify(previousJson, null, 2)}\n\nMODIFICATION DEMANDÉE :\n${modificationPrompt}\n\nRENVOIE LE SCHÉMA COMPLET MIS À JOUR (pas un patch). Conserve la question d'origine, intègre les nouveaux éléments (objets, forces, composants), recalcule la timeline si la physique change, ajuste constants/params en conséquence. Si la modification ajoute un solide, le scénario peut basculer (ex: pulley → inclined_pulley). Choisis toujours le scénario le plus adapté à la situation finale.`
-      : `Analyse cet exercice et retourne le plan cognitif sémantique. Lis l'énoncé EN ENTIER avant de choisir le scénario : si plusieurs objets sont reliés, tu DOIS choisir un scénario COMBINÉ (inclined_pulley, etc.) et JAMAIS un scénario simple.\n\n${exercise}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "parse_physics_exercise",
-              description: "Retourne l'analyse structurée d'un problème de physique en termes PHYSIQUES (jamais en pixels).",
-              parameters: {
-                type: "object",
-                properties: {
-                  meta: {
-                    type: "object",
-                    properties: {
-                      domain: { type: "string" },
-                      scenario: { type: "string" },
-                      title: { type: "string" },
-                    },
-                    required: ["domain", "scenario", "title"],
-                  },
-                  constants: {
-                    type: "object",
-                    additionalProperties: { type: "number" },
-                  },
-                  diagram: {
-                    type: "object",
-                    properties: {
-                      scenario: {
-                        type: "string",
-                        enum: ["free_fall", "inclined_plane", "inclined_pulley", "projectile", "pulley", "spring", "pendulum", "horizontal_motion", "circuit", "generic"],
-                      },
-                      params: {
-                        type: "object",
-                        additionalProperties: { type: "number" },
-                      },
-                      showAxis: { type: "boolean" },
-                      objects: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            id: { type: "string" },
-                            type: { type: "string", enum: ["block", "ball", "particle", "mass"] },
-                            label: { type: "string" },
-                            mass: { type: "number" },
-                            anchor: { type: "string" },
-                            distance: { type: "number" },
-                            size: { type: "number" },
-                          },
-                          required: ["id", "type"],
-                        },
-                      },
-                      forces: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            id: { type: "string" },
-                            target: { type: "string" },
-                            type: {
-                              type: "string",
-                              enum: ["weight", "normal", "friction", "tension", "applied", "spring", "drag", "reaction", "custom"],
-                            },
-                            label: { type: "string" },
-                            magnitude: { type: "string" },
-                            value: { type: "number" },
-                            direction: {
-                              type: "object",
-                              properties: { x: { type: "number" }, y: { type: "number" } },
-                            },
-                            orientation: { type: "string" },
-                            color: { type: "string" },
-                          },
-                          required: ["id", "target", "type", "label"],
-                        },
-                      },
-                      circuit: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            id: { type: "string" },
-                            type: { type: "string", enum: ["battery", "resistor", "capacitor", "wire"] },
-                            label: { type: "string" },
-                            value: { type: "number" },
-                            unit: { type: "string" },
-                          },
-                          required: ["id", "type"],
-                        },
-                      },
-                    },
-                    required: ["scenario", "params", "objects", "forces"],
-                  },
-                  timeline: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        type: { type: "string", enum: ["concept", "equation", "substitution", "solve", "diagram", "motion", "projection"] },
-                        title: { type: "string" },
-                        description: { type: "string" },
-                        formula: { type: "string" },
-                        result: { type: "object", additionalProperties: {} },
-                        dependencies: { type: "array", items: { type: "string" } },
-                        highlight_elements: { type: "array", items: { type: "string" } },
-                        highlight_forces: { type: "array", items: { type: "string" } },
-                        t_ratio: { type: "number", description: "Position dans l'animation, 0 à 1" },
-                        projection_target: { type: "string", description: "ID de l'objet pour la projection" },
-                      },
-                      required: ["id", "type", "title"],
-                    },
-                  },
-                },
-                required: ["meta", "constants", "diagram", "timeline"],
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "parse_physics_exercise" } },
-      }),
+    // Passe 1 — extraction (en parallèle avec heuristique synchrone)
+    const extraction = await callExtractor(apiKey, exercise);
+
+    // Heuristique scénario
+    const { scenario, hints } = detectScenario(exercise);
+    const variant = detectVariant(exercise, scenario);
+
+    // Passe 2 — construction
+    let userMessage = buildUserMessage({
+      exercise, extraction, scenario, hints, variant,
+      isModification, previousJson, modificationPrompt,
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Trop de requêtes. Réessayez dans un instant." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Crédits IA épuisés. Ajoutez des crédits dans les paramètres." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const text = await response.text();
-      console.error("AI gateway error:", response.status, text);
-      return new Response(
-        JSON.stringify({ error: "Erreur du moteur IA" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    let result = await callConstructor(apiKey, userMessage);
+    if (result.status !== 200 || !result.json) {
+      return new Response(JSON.stringify({ error: result.error ?? "Erreur" }), {
+        status: result.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-
-    if (!toolCall?.function?.arguments) {
-      console.error("No tool call in response:", JSON.stringify(data));
-      return new Response(
-        JSON.stringify({ error: "L'IA n'a pas retourné de plan structuré" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // Validation + auto-retry silencieux (1×)
+    let v = validate(result.json);
+    if (!v.ok) {
+      console.warn("Validation 1 KO:", v.errors);
+      userMessage = buildUserMessage({
+        exercise, extraction, scenario, hints, variant,
+        isModification, previousJson, modificationPrompt,
+        retryErrors: v.errors,
+      });
+      const retry = await callConstructor(apiKey, userMessage);
+      if (retry.status === 200 && retry.json) {
+        result = retry;
+        v = validate(result.json);
+      }
     }
 
-    const cognitiveJSON = JSON.parse(toolCall.function.arguments);
+    // Patch local final si toujours KO
+    if (!v.ok) {
+      console.warn("Validation 2 KO, patch local:", v.errors);
+      result.json = patchDefaults(result.json);
+    }
 
-    return new Response(JSON.stringify(cognitiveJSON), {
+    return new Response(JSON.stringify(result.json), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
     console.error("parse-exercise error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Erreur inconnue" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Erreur inconnue" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
