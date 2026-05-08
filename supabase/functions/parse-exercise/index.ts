@@ -521,7 +521,7 @@ function buildUserMessage(args: {
   extraction: Extraction | null;
   scenario: ScenarioId;
   hints: string[];
-  variant: Record<string, any>;
+  variant: Record<string, number>;
   isModification: boolean;
   previousJson?: unknown;
   modificationPrompt?: string;
