@@ -125,8 +125,8 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
     });
 
     // Vecteur vitesse instantanée
-    const vx = v0 * Math.cos(t);
-    const vy = v0 * Math.sin(t) - g * animT;
+    const vx = vx0;
+    const vy = vy0 - g * animT;
     const vmag = Math.hypot(vx, vy);
     if (vmag > 0.5 && animT < tFlight) {
       const vpx = Math.min(110, 50 + vmag * 1.6);
