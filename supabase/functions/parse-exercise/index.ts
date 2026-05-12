@@ -1,14 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { callAI } from "../_shared/aiClient.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL_EXTRACTOR = "google/gemini-3-flash-preview";
-const MODEL_CONSTRUCTOR = "google/gemini-2.5-pro";
 
 // ════════════════════════════════════════════════════════════════════
 // HEURISTIQUE DÉTERMINISTE — détection de scénario
@@ -198,33 +195,21 @@ interface Extraction {
   keywords?: string[];
 }
 
-async function callExtractor(apiKey: string, exercise: string): Promise<Extraction | null> {
-  try {
-    const r = await fetch(GATEWAY_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL_EXTRACTOR,
-        messages: [
-          { role: "system", content: EXTRACTOR_SYSTEM },
-          { role: "user", content: exercise },
-        ],
-        tools: [EXTRACTOR_TOOL],
-        tool_choice: { type: "function", function: { name: "extract_exercise" } },
-      }),
-    });
-    if (!r.ok) {
-      console.error("Extractor failed", r.status, await r.text());
-      return null;
-    }
-    const j = await r.json();
-    const raw = j.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!raw) return null;
-    return JSON.parse(raw) as Extraction;
-  } catch (e) {
-    console.error("Extractor exception", e);
+async function callExtractor(exercise: string): Promise<Extraction | null> {
+  const r = await callAI({
+    messages: [
+      { role: "system", content: EXTRACTOR_SYSTEM },
+      { role: "user", content: exercise },
+    ],
+    tools: [EXTRACTOR_TOOL],
+    tool_choice: { type: "function", function: { name: "extract_exercise" } },
+  });
+  if (!r.ok || !r.toolArgs) {
+    console.error("Extractor failed", r.error);
     return null;
   }
+  console.log(`[extractor] ${r.provider}/${r.modelUsed}`);
+  return r.toolArgs as Extraction;
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -483,37 +468,24 @@ function patchDefaults(json: any): any {
 // CONSTRUCTEUR
 // ════════════════════════════════════════════════════════════════════
 async function callConstructor(
-  apiKey: string,
   userMessage: string,
-): Promise<{ status: number; json?: any; error?: string }> {
-  const resp = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL_CONSTRUCTOR,
-      messages: [
-        { role: "system", content: CONSTRUCTOR_SYSTEM },
-        { role: "user", content: userMessage },
-      ],
-      tools: [CONSTRUCTOR_TOOL],
-      tool_choice: { type: "function", function: { name: "parse_physics_exercise" } },
-    }),
+): Promise<{ status: number; json?: any; error?: string; provider?: string; model?: string }> {
+  const r = await callAI({
+    messages: [
+      { role: "system", content: CONSTRUCTOR_SYSTEM },
+      { role: "user", content: userMessage },
+    ],
+    tools: [CONSTRUCTOR_TOOL],
+    tool_choice: { type: "function", function: { name: "parse_physics_exercise" } },
   });
-  if (!resp.ok) {
-    if (resp.status === 429) return { status: 429, error: "Trop de requêtes. Réessayez dans un instant." };
-    if (resp.status === 402) return { status: 402, error: "Crédits IA épuisés. Ajoutez des crédits dans les paramètres." };
-    const txt = await resp.text();
-    console.error("Constructor gateway error", resp.status, txt);
-    return { status: 500, error: "Erreur du moteur IA" };
+  if (!r.ok) {
+    if (r.status === 429) return { status: 429, error: "Trop de requêtes. Réessayez dans un instant." };
+    if (r.status === 402) return { status: 402, error: "Crédits IA épuisés." };
+    return { status: 500, error: r.error ?? "Erreur du moteur IA" };
   }
-  const data = await resp.json();
-  const raw = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-  if (!raw) return { status: 500, error: "L'IA n'a pas retourné de plan structuré" };
-  try {
-    return { status: 200, json: JSON.parse(raw) };
-  } catch (e) {
-    return { status: 500, error: "JSON malformé" };
-  }
+  if (!r.toolArgs) return { status: 500, error: "L'IA n'a pas retourné de plan structuré" };
+  console.log(`[constructor] ${r.provider}/${r.modelUsed}`);
+  return { status: 200, json: r.toolArgs, provider: r.provider, model: r.modelUsed };
 }
 
 function buildUserMessage(args: {
@@ -587,13 +559,10 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) throw new Error("LOVABLE_API_KEY non configuré");
-
     const isModification = !!previousJson && !!modificationPrompt;
 
-    // Passe 1 — extraction (en parallèle avec heuristique synchrone)
-    const extraction = await callExtractor(apiKey, exercise);
+    // Passe 1 — extraction (cascade OpenRouter free → fallback Lovable)
+    const extraction = await callExtractor(exercise);
 
     // Heuristique scénario
     const { scenario, hints } = detectScenario(exercise);
@@ -605,7 +574,7 @@ serve(async (req) => {
       isModification, previousJson, modificationPrompt,
     });
 
-    let result = await callConstructor(apiKey, userMessage);
+    let result = await callConstructor(userMessage);
     if (result.status !== 200 || !result.json) {
       return new Response(JSON.stringify({ error: result.error ?? "Erreur" }), {
         status: result.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -621,7 +590,7 @@ serve(async (req) => {
         isModification, previousJson, modificationPrompt,
         retryErrors: v.errors,
       });
-      const retry = await callConstructor(apiKey, userMessage);
+      const retry = await callConstructor(userMessage);
       if (retry.status === 200 && retry.json) {
         result = retry;
         v = validate(result.json);
@@ -633,6 +602,9 @@ serve(async (req) => {
       console.warn("Validation 2 KO, patch local:", v.errors);
       result.json = patchDefaults(result.json);
     }
+
+    // Annoter avec le provider/modèle utilisé pour le badge UI
+    result.json._meta = { provider: result.provider, model: result.model };
 
     return new Response(JSON.stringify(result.json), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

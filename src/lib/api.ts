@@ -20,3 +20,31 @@ export async function parseExercise(
   return json;
 }
 
+export interface ExtractedExercise {
+  index: number;
+  title: string;
+  statement: string;
+}
+
+export async function extractDocument(file: File): Promise<ExtractedExercise[]> {
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error("Fichier trop volumineux (max 5 Mo)");
+  }
+  const fileBase64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // strip "data:...;base64,"
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
+    reader.readAsDataURL(file);
+  });
+
+  const { data, error } = await supabase.functions.invoke("extract-document", {
+    body: { fileBase64, mimeType: file.type },
+  });
+  if (error) throw new Error(error.message || "Échec extraction");
+  if (data?.error) throw new Error(data.error);
+  return (data?.exercises ?? []) as ExtractedExercise[];
+}

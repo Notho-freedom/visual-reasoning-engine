@@ -12,6 +12,10 @@ import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
 import EditableStatement from "@/components/EditableStatement";
 import ParamsOverlay from "@/components/ParamsOverlay";
 import ShortcutsOverlay from "@/components/ShortcutsOverlay";
+import ExerciseTabs from "@/components/ExerciseTabs";
+import UploadButton from "@/components/UploadButton";
+import CommunityGallery from "@/components/CommunityGallery";
+import { useExerciseQueue } from "@/hooks/useExerciseQueue";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { parseExercise } from "@/lib/api";
+import { parseExercise, type ExtractedExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
 import {
@@ -80,6 +84,31 @@ const Index = () => {
   const boardContainerRef = useRef<HTMLDivElement>(null);
   const restoredRef = useRef(false);
   const initialConstantsRef = useRef<Record<string, number>>({});
+
+  // File d'exercices extraits d'un document uploadé
+  const queue = useExerciseQueue();
+
+  // Quand on clique un onglet, charger ses données dans la vue principale
+  useEffect(() => {
+    if (!queue.activeId) return;
+    const ex = queue.exercises.find(e => e.id === queue.activeId);
+    if (!ex) return;
+    if (ex.status === "ready" && ex.data) {
+      setData(ex.data);
+      setExercise(ex.statement);
+      setConstants(ex.data.constants ?? {});
+      initialConstantsRef.current = { ...(ex.data.constants ?? {}) };
+      setCurrentStep(0); setT(0);
+    } else if (ex.status === "parsing" || ex.status === "pending") {
+      // garder le précédent affichage; les onglets montrent l'état
+    }
+  }, [queue.activeId, queue.exercises]);
+
+  const handleExtracted = useCallback((items: ExtractedExercise[]) => {
+    setChatMessages([]); setHistory([]);
+    queue.setQueue(items.map(it => ({ title: it.title, statement: it.statement })));
+  }, [queue]);
+
 
   // Restore session on mount
   useEffect(() => {
@@ -286,7 +315,7 @@ const Index = () => {
   };
 
   // ===================== HERO =====================
-  if (!data && !isLoading) {
+  if (!data && !isLoading && queue.exercises.length === 0) {
     const hasSessions = sessions.length > 0;
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -351,9 +380,7 @@ const Index = () => {
                 className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
               <div className="flex items-center justify-between px-2 pb-1">
-                <button type="button" className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground transition" title="Ajouter">
-                  <Plus className="h-4 w-4" />
-                </button>
+                <UploadButton onExtracted={handleExtracted} />
                 <button
                   type="submit"
                   disabled={!heroInput.trim()}
@@ -375,6 +402,7 @@ const Index = () => {
               ))}
             </div>
           </div>
+          <CommunityGallery onPick={(p) => { setHeroInput(p); handleHeroSubmit(p); }} />
         </main>
       </div>
     );
