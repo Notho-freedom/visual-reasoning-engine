@@ -85,6 +85,31 @@ const Index = () => {
   const restoredRef = useRef(false);
   const initialConstantsRef = useRef<Record<string, number>>({});
 
+  // File d'exercices extraits d'un document uploadé
+  const queue = useExerciseQueue();
+
+  // Quand on clique un onglet, charger ses données dans la vue principale
+  useEffect(() => {
+    if (!queue.activeId) return;
+    const ex = queue.exercises.find(e => e.id === queue.activeId);
+    if (!ex) return;
+    if (ex.status === "ready" && ex.data) {
+      setData(ex.data);
+      setExercise(ex.statement);
+      setConstants(ex.data.constants ?? {});
+      initialConstantsRef.current = { ...(ex.data.constants ?? {}) };
+      setCurrentStep(0); setT(0);
+    } else if (ex.status === "parsing" || ex.status === "pending") {
+      // garder le précédent affichage; les onglets montrent l'état
+    }
+  }, [queue.activeId, queue.exercises]);
+
+  const handleExtracted = useCallback((items: ExtractedExercise[]) => {
+    setChatMessages([]); setHistory([]);
+    queue.setQueue(items.map(it => ({ title: it.title, statement: it.statement })));
+  }, [queue]);
+
+
   // Restore session on mount
   useEffect(() => {
     if (restoredRef.current) return;
