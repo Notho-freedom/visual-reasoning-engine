@@ -1,149 +1,152 @@
+# Plan — OpenRouter gratuit, upload multi-exercices, home Lovable-like
 
-# Précision absolue des schémas — refonte du pipeline d'interprétation
+## 1. Bascule sur OpenRouter (modèles gratuits) + fallback Lovable AI
 
-Objectif : que chaque schéma soit la traduction fidèle de l'énoncé, sans paramètre oublié, sans confusion de scénario, sans incohérence physique. Plus jamais un bloc qui flotte, un angle inversé, une force manquante ou une masse à la mauvaise place.
+Objectif : ne plus consommer de crédits Lovable AI tant que l'app n'est pas validée. OpenRouter d'abord (modèles `:free`), Lovable AI uniquement si tout échoue.
 
-## 1. Pipeline en 2 passes (edge function `parse-exercise`)
+### Pipeline d'appel unifié
+Nouvelle couche `supabase/functions/_shared/aiClient.ts` (importée par toutes les edge functions) :
 
 ```text
-Énoncé FR
-   │
-   ▼
-[Passe 1 — EXTRACTEUR]            (modèle rapide + raisonnement structuré)
-   │  → parameters[] (nom, valeur, unité, rôle)
-   │  → entities[]   (objets, supports, liaisons)
-   │  → keywords[]   (mots déclencheurs scénario)
-   │  → question     (ce qu'on demande)
-   ▼
-[Heuristique déterministe TS]
-   │  → scenario candidat + score de confiance
-   │  → params normalisés (SI : m, kg, °, m/s, N…)
-   ▼
-[Passe 2 — CONSTRUCTEUR]          (modèle raisonneur, JSON cognitif final)
-   │  reçoit : énoncé + extraction + scénario suggéré
-   │  produit : DiagramSpec + timeline complète
-   ▼
-[Validateur Zod + règles physiques]
-   │  ✓ ok  → renvoie au front
-   │  ✗ ko  → AUTO-RETRY SILENCIEUX (1×) avec liste d'erreurs en feedback
-   ▼
-JSON cognitif livré
+callAI(messages, { json?, schema? })
+  ├─ 1. Liste de modèles gratuits (cache 1h via fetch GET https://openrouter.ai/api/v1/models, filtrée sur pricing.prompt === "0")
+  ├─ 2. Cascade ordonnée (priorité raisonnement structuré) :
+  │     - deepseek/deepseek-chat-v3.1:free
+  │     - deepseek/deepseek-r1:free
+  │     - meta-llama/llama-3.3-70b-instruct:free
+  │     - qwen/qwen-2.5-72b-instruct:free
+  │     - google/gemini-2.0-flash-exp:free
+  │     - mistralai/mistral-small-3.2-24b-instruct:free
+  │  → POST https://openrouter.ai/api/v1/chat/completions
+  │     headers: Authorization Bearer OPENROUTER_API_KEY, HTTP-Referer, X-Title
+  ├─ 3. Si 429 / 402 / 5xx / JSON invalide → modèle suivant (silencieux, log)
+  └─ 4. Si toute la cascade échoue → fallback Lovable AI Gateway (google/gemini-3-flash-preview)
 ```
 
-- Passe 1 : `google/gemini-3-flash-preview` (rapide, cheap, JSON-tool).
-- Passe 2 : `google/gemini-2.5-pro` conservé (déjà solide en raisonnement physique structuré).
-- Auto-retry silencieux unique en cas d'échec de validation, avec les erreurs renvoyées dans le prompt de la 2e tentative. Si toujours invalide → fallback sur les corrections locales (valeurs par défaut sûres) + log.
+### Fonctions à brancher dessus
+- `parse-exercise/index.ts` (extracteur + constructeur) — remplace les 2 appels directs Gateway
+- `chat-modify` (si présent dans `ChatPanel`) — idem
+- Future fonction `extract-document` (voir §2)
 
-## 2. Extraction exhaustive des paramètres
+### Secret requis
+`OPENROUTER_API_KEY` — à ajouter via le tool secrets (l'utilisateur récupère une clé gratuite sur openrouter.ai/keys).
 
-Passe 1 retourne un tableau typé `parameters` :
+### UI
+Petit badge discret en bas du workspace : `IA: deepseek-r1:free` (ou modèle utilisé), passe en orange si fallback Lovable AI déclenché.
 
-```ts
-{ symbol: "α", value: 30, unit: "deg",  role: "angle"  }
-{ symbol: "m", value: 2,  unit: "kg",   role: "mass"   }
-{ symbol: "μ", value: 0.2,unit: "",     role: "friction_coef" }
-{ symbol: "v0",value: 20, unit: "m/s",  role: "initial_speed" }
-{ symbol: "h", value: 15, unit: "m",    role: "height" }
-{ symbol: "k", value: 80, unit: "N/m",  role: "spring_const" }
-{ symbol: "L", value: 1.2,unit: "m",    role: "length" }
-{ symbol: "R", value: 100,unit: "Ω",    role: "resistance" }
+---
+
+## 2. Upload PDF / image multi-exercices avec onglets séquentiels
+
+### Flux utilisateur
+```text
+[Hero] bouton 📎 "Importer un sujet (PDF, image)"
+   ↓
+Upload → extract-document edge function
+   ↓
+Liste d'exercices détectés [Ex 1, Ex 2, Ex 3, …]  ← onglets en haut du workspace
+   ↓
+Chaque onglet passe automatiquement par parse-exercise (file séquentielle)
+   ├─ Ex 1: ✓ analysé → schéma + étapes affichés
+   ├─ Ex 2: ⏳ en cours (spinner sur l'onglet)
+   └─ Ex 3: ⌛ en attente
 ```
 
-- Conversion SI systématique côté serveur (cm→m, g→kg, km/h→m/s, °→°, mN→N…).
-- Aucun nombre de l'énoncé n'est ignoré : tout passe dans `constants` ; les rôles connus alimentent `diagram.params`.
-- Détection de la **question posée** (ce que l'élève doit calculer) → utilisée pour orienter la timeline (étapes `solve` ciblant les bonnes inconnues).
+### Edge function `extract-document`
+- Entrée : `{ fileBase64, mimeType }` (PDF ou image)
+- Pour PDF : pdf-parse côté Deno (texte brut) + si peu de texte (scan) → fallback vision
+- Pour image / scan : vision model gratuit OpenRouter (`google/gemini-2.0-flash-exp:free` ou `qwen/qwen-2.5-vl-72b:free`)
+- Prompt : "Repère chaque exercice indépendant dans ce document. Renvoie un tableau JSON `{ exercises: [{ index, statement }] }`. Ignore consignes générales, en-têtes, numéros de page."
+- Sortie : `{ exercises: [{ id, statement }] }`
 
-## 3. Détection de scénario plus fiable
+### Frontend
+- Nouveau composant `ExerciseTabs.tsx` au-dessus du workspace 3 colonnes
+- État global : `Map<exerciseId, { statement, status: 'pending'|'parsing'|'ready'|'error', cognitiveJson? }>`
+- Worker côté client : traite les exercices `pending` un par un via `parseExercise()` (pas en parallèle pour ne pas saturer la cascade gratuite)
+- Onglet actif → l'app affiche le `cognitiveJson` correspondant dans le canvas + chat + steps
+- Persistance locale (localStorage) pour ne pas perdre les onglets au refresh
 
-Pré-classifieur déterministe en TypeScript (mots-clés FR + combinaisons), exécuté entre passe 1 et passe 2 :
+### Limite
+- Taille fichier max : 5 Mo
+- Max 10 exercices par doc (anti-abus)
 
-| Signal détecté | Scénario imposé |
-|---|---|
-| 2 masses + corde/poulie + plan incliné | `inclined_pulley` |
-| 2 masses + corde/poulie seuls | `pulley` |
-| ressort + vertical/suspendu | `spring` (variante verticale) |
-| ressort + horizontal/table | `spring` |
-| projectile + "horizontalement" + hauteur | `projectile` (tir horizontal) |
-| projectile + angle θ | `projectile` (tir oblique) |
-| pendule / oscille / fil | `pendulum` |
-| circuit + (R, C, batterie) | `circuit` |
-| chute / lâché / sans vitesse initiale | `free_fall` |
-| force horizontale + table/sol | `horizontal_motion` |
-| plan incliné seul (1 objet) | `inclined_plane` |
+---
 
-Le scénario suggéré est passé à la passe 2 comme **contrainte forte** ("scenario must be X unless impossible"). Évite les régressions classiques : plan incliné simple confondu avec poulie inclinée, ressort vertical traité comme horizontal, projectile horizontal traité comme oblique à 0°.
+## 3. NE PAS ajouter de générateur d'exercices statique
 
-## 4. Validation & auto-correction (Zod + règles physiques)
+Conformément à la décision : on ne fait **pas** de page "générer des exercices par thème". L'IA lit ce qui arrive (collé ou uploadé), classe le scénario (déjà fait), construit le schéma. Si l'énoncé n'entre dans aucun scénario supporté, on affiche un message clair plutôt que d'inventer.
 
-Côté edge function ET côté front, avant rendu :
+À ajouter côté `parse-exercise` :
+- Si scénario non reconnu après les 2 passes → retour `{ unsupported: true, reason }` au lieu d'un faux JSON
+- Toast UX : "Ce type d'exercice n'est pas encore supporté (scénarios actuels : chute, plan incliné, ressort, projectile, pendule, poulie, circuit RC). Reformule ou essaie un autre énoncé."
 
-Schéma Zod strict :
-- `forces[].target` doit exister dans `objects[]`.
-- Champs requis selon `scenario` :
-  - `inclined_plane` / `inclined_pulley` → `params.angle`, `params.length`.
-  - `projectile` → `params.v0`, (`params.theta` ou tir horizontal).
-  - `spring` → `params.k`, `params.x` ou `L`.
-  - `pendulum` → `params.length`, `params.angle`.
-  - `circuit` → `circuit[]` non vide.
-- Plages plausibles (angle ∈ [0°, 90°], masse > 0, μ ∈ [0, 2], etc.).
-- Cohérence : si scénario = `inclined_pulley`, exactement 2 objets et au moins 1 force `tension` par objet.
-- `timeline` non vide, chaque étape a `t_ratio` ∈ [0, 1] et `projection` a `projection_target` valide.
+---
 
-Si KO → auto-retry silencieux unique avec les erreurs listées au modèle. Si toujours KO → patch local (valeurs par défaut documentées) + toast discret seulement si la physique est gravement cassée.
+## 4. Refonte de la page d'accueil — clone exact de lovable.dev
 
-## 5. Nouveaux scénarios / variantes fines
+Référence : structure visuelle identique à lovable.dev (visite préalable pour caler le rythme).
 
-Ajouts ciblés au moteur (`src/lib/physics/scenarios/`) :
+### Sections (dans l'ordre)
+1. **Top nav** minimaliste : logo "PhysicsEngine" à gauche, liens (Communauté, Tarifs, Apprendre, Lancer), bouton "Connexion" + CTA noir "Commencer" à droite.
+2. **Hero** plein écran avec gradient soft (rose→violet→bleu) :
+   - H1 énorme (~72px) : "Résolvez n'importe quel problème de physique."
+   - Sous-titre (~20px gris) : "Collez un énoncé, importez un sujet — l'IA construit le schéma, les forces et la solution étape par étape."
+   - Champ central rounded-2xl XL avec ombre douce : textarea + bouton 📎 (upload doc) + flèche d'envoi noire ronde
+   - 4 pills d'exemples sous le champ (chute libre, plan incliné, ressort, projectile)
+   - Sélecteur "Public/Privé" + niveau (Lycée/Prépa) en pied de champ (mimétisme exact Lovable)
+3. **From the Community** — galerie d'exercices déjà résolus (à la place des templates Lovable) :
+   - Grille 3 colonnes de cartes : aperçu canvas (mini schéma SVG), titre énoncé, scénario, "Voir la résolution"
+   - Onglets de filtre : Populaires / Récents / Mécanique / Électricité / Oscillations
+   - Données : tableau statique de ~12 exercices types pré-calculés (JSON dans `src/data/gallery.ts`)
+4. **Features bento** — 3-4 cartes : "IA qui comprend l'énoncé", "Schémas physiquement justes", "Import PDF/photo", "Étapes avec formules"
+5. **Footer** sobre
 
-- **Ressort vertical** (variante de `spring`) : masse suspendue, gravité prise en compte, équilibre statique + oscillation.
-- **Plan incliné avec force appliquée** : ajout d'un `applied` orienté (parallèle à la pente, horizontal, ou direction libre).
-- **Projectile depuis une hauteur** : départ à `(0, h0)`, support visible, portée mesurée au sol.
-- **Projectile horizontal** (tir tendu) : θ = 0, hauteur initiale obligatoire.
-- **Deux blocs empilés** (`stacked_blocks`) : frottement entre les deux + frottement avec le sol.
-- **Pendule conique** (option) : mouvement circulaire horizontal — phase 2 si demandé.
+### Détails design (déjà dans la mémoire)
+- Inter partout, JetBrains Mono pour les valeurs
+- CTA noirs `rounded-full`, fond off-white `#FAFAF9`, cartes blanches avec `shadow-soft`
+- Animation framer-motion : fade-up du hero, hover scale sur cartes galerie
 
-Chaque nouveau scénario : ajouté à l'enum `ScenarioType`, exemple JSON dans le system prompt, computeur dans `layoutEngine.ts`.
+### Workspace
+- Page workspace (après envoi/upload) reste la structure 3 colonnes actuelle
+- Ajout : barre d'onglets exercices en haut si import multi-exercices
 
-## 6. Améliorations rendu (précision visuelle)
+---
 
-- Angles : toujours marqués avec arc + label (`α=30°`), même côté correct (sommet réel du triangle).
-- Cotes (`dimension`) automatiques : longueur de pente, hauteur de chute, distance ressort, longueur pendule.
-- Repère local toujours aligné sur la géométrie réelle (pente, corde, tangente).
-- Masses : taille proportionnelle à `mass^(1/3)` (clamp min/max) pour visualiser la différence m₁/m₂.
-- Étiquettes des forces non superposées (offset perpendiculaire automatique si collision).
+## 5. Détails techniques
 
-## 7. Détails techniques
+### Fichiers créés
+- `supabase/functions/_shared/aiClient.ts` — cascade OpenRouter + fallback
+- `supabase/functions/_shared/freeModels.ts` — liste + cache /models
+- `supabase/functions/extract-document/index.ts` — extraction multi-exercices
+- `src/components/ExerciseTabs.tsx` — onglets workspace
+- `src/components/UploadButton.tsx` — bouton 📎 dans hero + workspace
+- `src/components/home/HomeNav.tsx`
+- `src/components/home/HeroLovable.tsx`
+- `src/components/home/CommunityGallery.tsx`
+- `src/components/home/FeaturesBento.tsx`
+- `src/components/home/HomeFooter.tsx`
+- `src/data/gallery.ts` — ~12 exercices résolus pré-calculés
+- `src/hooks/useExerciseQueue.ts` — worker séquentiel client
 
-Fichiers touchés :
-- `supabase/functions/parse-exercise/index.ts` — refonte en 2 passes, system prompts revus, retry logic.
-- `supabase/functions/parse-exercise/extractor.ts` (nouveau) — passe 1 + heuristique scénario.
-- `supabase/functions/parse-exercise/validator.ts` (nouveau) — Zod schema partagé via copie.
-- `src/lib/validation/cognitiveSchema.ts` (nouveau) — validation côté front avant rendu.
-- `src/lib/physics/scenarios/spring.ts` — variante verticale.
-- `src/lib/physics/scenarios/projectile.ts` — départ depuis hauteur, tir horizontal.
-- `src/lib/physics/scenarios/inclinedPlane.ts` — support force appliquée.
-- `src/lib/physics/scenarios/stackedBlocks.ts` (nouveau).
-- `src/lib/physics/layoutEngine.ts` — wiring des nouveaux scénarios.
-- `src/types/cognitive.ts` — nouveaux scenarios + champs (`initialHeight`, `appliedForceDir`, etc.).
-- `src/components/SceneRenderer.tsx` — anti-collision labels de forces, cotes auto.
+### Fichiers modifiés
+- `supabase/functions/parse-exercise/index.ts` — utilise `aiClient`, retourne `unsupported` si nécessaire
+- `src/pages/Index.tsx` — nouvelle home (refactor)
+- `src/lib/api.ts` — `parseExercise` gère `unsupported`, ajout `extractDocument()`
+- `src/types/cognitive.ts` — type `Exercise` (id, statement, status, json)
 
-Modèles AI :
-- Passe 1 : `google/gemini-3-flash-preview`.
-- Passe 2 : `google/gemini-2.5-pro`.
-- 1 retry silencieux max sur passe 2.
+### Secret
+- `OPENROUTER_API_KEY` (à demander via add_secret après approbation du plan)
 
-Pas de changement de schéma BDD (pas de BDD).
+### Hors scope
+- Pas de BDD : tout reste en localStorage / état React
+- Pas d'auth, pas de profils
+- Pas de générateur statique d'exercices
+- Pas de refonte du moteur physique (déjà en cours)
 
-## 8. Hors-scope (pour rester focalisé)
+---
 
-- Pas de refonte UI ni de nouveaux panneaux.
-- Pas de changement du player d'animation.
-- Pas de nouveaux raccourcis clavier.
-- Pas de persistence cloud des analyses.
-
-## Critère de succès
-
-Sur un set de ~10 énoncés tests (chute, plan incliné simple, plan incliné + poulie, pendule, ressort horizontal, ressort vertical, projectile oblique, projectile horizontal, circuit RC, mouvement horizontal avec frottement) :
-- 100 % des paramètres numériques de l'énoncé apparaissent dans `constants`.
-- Scénario correct pour chaque énoncé (pas de simple confondu avec combiné).
-- Aucun rendu cassé (forces qui ciblent un objet inexistant, masse qui flotte, angle inversé).
+## Critères de succès
+- Plus aucun appel direct Lovable AI sauf si toute la cascade gratuite échoue
+- Upload d'un PDF de TD avec 4 exercices → 4 onglets, traités l'un après l'autre, schémas corrects
+- Home indiscernable visuellement d'un clone de lovable.dev (hors contenu)
+- Énoncé hors scénario → message clair, pas de schéma cassé
