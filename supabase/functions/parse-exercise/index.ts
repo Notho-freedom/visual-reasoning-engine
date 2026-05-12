@@ -1,14 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { callAI } from "../_shared/aiClient.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
-const MODEL_EXTRACTOR = "google/gemini-3-flash-preview";
-const MODEL_CONSTRUCTOR = "google/gemini-2.5-pro";
 
 // ════════════════════════════════════════════════════════════════════
 // HEURISTIQUE DÉTERMINISTE — détection de scénario
