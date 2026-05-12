@@ -12,6 +12,10 @@ import HistoryPanel, { type HistoryEntry } from "@/components/HistoryPanel";
 import EditableStatement from "@/components/EditableStatement";
 import ParamsOverlay from "@/components/ParamsOverlay";
 import ShortcutsOverlay from "@/components/ShortcutsOverlay";
+import ExerciseTabs from "@/components/ExerciseTabs";
+import UploadButton from "@/components/UploadButton";
+import CommunityGallery from "@/components/CommunityGallery";
+import { useExerciseQueue } from "@/hooks/useExerciseQueue";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { parseExercise } from "@/lib/api";
+import { parseExercise, type ExtractedExercise } from "@/lib/api";
 import { computeLayout } from "@/lib/physics/layoutEngine";
 import type { CognitiveJSON } from "@/types/cognitive";
 import {
