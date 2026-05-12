@@ -380,9 +380,7 @@ const Index = () => {
                 className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
               <div className="flex items-center justify-between px-2 pb-1">
-                <button type="button" className="h-8 w-8 rounded-full hover:bg-secondary flex items-center justify-center text-muted-foreground transition" title="Ajouter">
-                  <Plus className="h-4 w-4" />
-                </button>
+                <UploadButton onExtracted={handleExtracted} />
                 <button
                   type="submit"
                   disabled={!heroInput.trim()}
@@ -404,6 +402,7 @@ const Index = () => {
               ))}
             </div>
           </div>
+          <CommunityGallery onPick={(p) => { setHeroInput(p); handleHeroSubmit(p); }} />
         </main>
       </div>
     );
