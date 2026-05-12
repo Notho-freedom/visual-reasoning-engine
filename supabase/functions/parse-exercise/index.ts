@@ -559,13 +559,10 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) throw new Error("LOVABLE_API_KEY non configuré");
-
     const isModification = !!previousJson && !!modificationPrompt;
 
-    // Passe 1 — extraction (en parallèle avec heuristique synchrone)
-    const extraction = await callExtractor(apiKey, exercise);
+    // Passe 1 — extraction (cascade OpenRouter free → fallback Lovable)
+    const extraction = await callExtractor(exercise);
 
     // Heuristique scénario
     const { scenario, hints } = detectScenario(exercise);
@@ -577,7 +574,7 @@ serve(async (req) => {
       isModification, previousJson, modificationPrompt,
     });
 
-    let result = await callConstructor(apiKey, userMessage);
+    let result = await callConstructor(userMessage);
     if (result.status !== 200 || !result.json) {
       return new Response(JSON.stringify({ error: result.error ?? "Erreur" }), {
         status: result.status, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -593,7 +590,7 @@ serve(async (req) => {
         isModification, previousJson, modificationPrompt,
         retryErrors: v.errors,
       });
-      const retry = await callConstructor(apiKey, userMessage);
+      const retry = await callConstructor(userMessage);
       if (retry.status === 200 && retry.json) {
         result = retry;
         v = validate(result.json);
@@ -605,6 +602,9 @@ serve(async (req) => {
       console.warn("Validation 2 KO, patch local:", v.errors);
       result.json = patchDefaults(result.json);
     }
+
+    // Annoter avec le provider/modèle utilisé pour le badge UI
+    result.json._meta = { provider: result.provider, model: result.model };
 
     return new Response(JSON.stringify(result.json), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
