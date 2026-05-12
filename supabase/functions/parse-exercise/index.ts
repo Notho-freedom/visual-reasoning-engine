@@ -468,37 +468,24 @@ function patchDefaults(json: any): any {
 // CONSTRUCTEUR
 // ════════════════════════════════════════════════════════════════════
 async function callConstructor(
-  apiKey: string,
   userMessage: string,
-): Promise<{ status: number; json?: any; error?: string }> {
-  const resp = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL_CONSTRUCTOR,
-      messages: [
-        { role: "system", content: CONSTRUCTOR_SYSTEM },
-        { role: "user", content: userMessage },
-      ],
-      tools: [CONSTRUCTOR_TOOL],
-      tool_choice: { type: "function", function: { name: "parse_physics_exercise" } },
-    }),
+): Promise<{ status: number; json?: any; error?: string; provider?: string; model?: string }> {
+  const r = await callAI({
+    messages: [
+      { role: "system", content: CONSTRUCTOR_SYSTEM },
+      { role: "user", content: userMessage },
+    ],
+    tools: [CONSTRUCTOR_TOOL],
+    tool_choice: { type: "function", function: { name: "parse_physics_exercise" } },
   });
-  if (!resp.ok) {
-    if (resp.status === 429) return { status: 429, error: "Trop de requêtes. Réessayez dans un instant." };
-    if (resp.status === 402) return { status: 402, error: "Crédits IA épuisés. Ajoutez des crédits dans les paramètres." };
-    const txt = await resp.text();
-    console.error("Constructor gateway error", resp.status, txt);
-    return { status: 500, error: "Erreur du moteur IA" };
+  if (!r.ok) {
+    if (r.status === 429) return { status: 429, error: "Trop de requêtes. Réessayez dans un instant." };
+    if (r.status === 402) return { status: 402, error: "Crédits IA épuisés." };
+    return { status: 500, error: r.error ?? "Erreur du moteur IA" };
   }
-  const data = await resp.json();
-  const raw = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-  if (!raw) return { status: 500, error: "L'IA n'a pas retourné de plan structuré" };
-  try {
-    return { status: 200, json: JSON.parse(raw) };
-  } catch (e) {
-    return { status: 500, error: "JSON malformé" };
-  }
+  if (!r.toolArgs) return { status: 500, error: "L'IA n'a pas retourné de plan structuré" };
+  console.log(`[constructor] ${r.provider}/${r.modelUsed}`);
+  return { status: 200, json: r.toolArgs, provider: r.provider, model: r.modelUsed };
 }
 
 function buildUserMessage(args: {
