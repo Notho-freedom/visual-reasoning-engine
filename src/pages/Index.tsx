@@ -315,7 +315,7 @@ const Index = () => {
   };
 
   // ===================== HERO =====================
-  if (!data && !isLoading) {
+  if (!data && !isLoading && queue.exercises.length === 0) {
     const hasSessions = sessions.length > 0;
     return (
       <div className="min-h-screen flex flex-col bg-background">
