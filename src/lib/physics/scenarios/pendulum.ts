@@ -56,7 +56,7 @@ export function computePendulum(spec: DiagramSpec, constants: Record<string, num
   const trailStart = Math.max(0, frame.t - trailWindow);
   const trailSamples = 24;
   const temporalTrailPoints = Array.from({ length: trailSamples }, (_, i) => {
-    const ratio = trailSamples === 1 ? 1 : i / (trailSamples - 1);
+    const ratio = i / (trailSamples - 1);
     const sampleT = trailStart + (frame.t - trailStart) * ratio;
     const angle = a0 * Math.cos(omega * sampleT);
     return toSVG(pendulumMassPosition(L, angle), vp);
