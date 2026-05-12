@@ -195,33 +195,21 @@ interface Extraction {
   keywords?: string[];
 }
 
-async function callExtractor(apiKey: string, exercise: string): Promise<Extraction | null> {
-  try {
-    const r = await fetch(GATEWAY_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL_EXTRACTOR,
-        messages: [
-          { role: "system", content: EXTRACTOR_SYSTEM },
-          { role: "user", content: exercise },
-        ],
-        tools: [EXTRACTOR_TOOL],
-        tool_choice: { type: "function", function: { name: "extract_exercise" } },
-      }),
-    });
-    if (!r.ok) {
-      console.error("Extractor failed", r.status, await r.text());
-      return null;
-    }
-    const j = await r.json();
-    const raw = j.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!raw) return null;
-    return JSON.parse(raw) as Extraction;
-  } catch (e) {
-    console.error("Extractor exception", e);
+async function callExtractor(exercise: string): Promise<Extraction | null> {
+  const r = await callAI({
+    messages: [
+      { role: "system", content: EXTRACTOR_SYSTEM },
+      { role: "user", content: exercise },
+    ],
+    tools: [EXTRACTOR_TOOL],
+    tool_choice: { type: "function", function: { name: "extract_exercise" } },
+  });
+  if (!r.ok || !r.toolArgs) {
+    console.error("Extractor failed", r.error);
     return null;
   }
+  console.log(`[extractor] ${r.provider}/${r.modelUsed}`);
+  return r.toolArgs as Extraction;
 }
 
 // ════════════════════════════════════════════════════════════════════
