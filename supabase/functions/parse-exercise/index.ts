@@ -606,7 +606,7 @@ serve(async (req) => {
         exercise, extraction, scenario, hints, variant,
         isModification, previousJson, modificationPrompt,
         retryErrors: v.errors,
-      });
+});
       const retry = await callConstructor(userMessage);
       if (retry.status === 200 && retry.json) {
         result = retry;
