@@ -14,6 +14,7 @@ import ParamsOverlay from "@/components/ParamsOverlay";
 import ShortcutsOverlay from "@/components/ShortcutsOverlay";
 import ExerciseTabs from "@/components/ExerciseTabs";
 import UploadButton from "@/components/UploadButton";
+import GenerateExerciseButton from "@/components/GenerateExerciseButton";
 import CommunityGallery from "@/components/CommunityGallery";
 import { useExerciseQueue } from "@/hooks/useExerciseQueue";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -380,7 +381,10 @@ const Index = () => {
                 className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
               />
               <div className="flex items-center justify-between px-2 pb-1">
-                <UploadButton onExtracted={handleExtracted} />
+                <div className="flex items-center gap-1">
+                  <UploadButton onExtracted={handleExtracted} />
+                  <GenerateExerciseButton onGenerated={setHeroInput} />
+                </div>
                 <button
                   type="submit"
                   disabled={!heroInput.trim()}

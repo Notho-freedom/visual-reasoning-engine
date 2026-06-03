@@ -48,3 +48,22 @@ export async function extractDocument(file: File): Promise<ExtractedExercise[]> 
   if (data?.error) throw new Error(data.error);
   return (data?.exercises ?? []) as ExtractedExercise[];
 }
+
+export interface GeneratedExercise {
+  statement: string;
+  scenario: string;
+  scenarioLabel: string;
+  difficulty: "facile" | "moyen" | "difficile";
+}
+
+export async function generateExercise(params: {
+  difficulty: "facile" | "moyen" | "difficile";
+  scenario?: string;
+}): Promise<GeneratedExercise> {
+  const { data, error } = await supabase.functions.invoke("generate-exercise", {
+    body: params,
+  });
+  if (error) throw new Error(error.message || "Échec de génération");
+  if (data?.error) throw new Error(data.error);
+  return data as GeneratedExercise;
+}
