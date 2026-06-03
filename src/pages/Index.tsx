@@ -482,9 +482,24 @@ const Index = () => {
           </div>
         </header>
 
+        {queue.exercises.length > 0 && (
+          <ExerciseTabs
+            exercises={queue.exercises}
+            activeId={queue.activeId}
+            onSelect={queue.setActiveId}
+            onClose={() => { queue.reset(); newSession(); }}
+          />
+        )}
+
         <div className="flex-1 flex min-h-0 relative">
           {/* TABLEAU plein écran + toolbar */}
           <main className="flex-1 flex flex-col min-w-0 p-6 gap-3 overflow-hidden bg-background">
+            {!data && queue.exercises.length > 0 && (
+              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground gap-3">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Analyse de l'exercice sélectionné…
+              </div>
+            )}
             {data && scene && (
               <>
                 <div
