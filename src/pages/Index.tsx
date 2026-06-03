@@ -14,6 +14,7 @@ import ParamsOverlay from "@/components/ParamsOverlay";
 import ShortcutsOverlay from "@/components/ShortcutsOverlay";
 import ExerciseTabs from "@/components/ExerciseTabs";
 import UploadButton from "@/components/UploadButton";
+import GenerateExerciseButton from "@/components/GenerateExerciseButton";
 import CommunityGallery from "@/components/CommunityGallery";
 import { useExerciseQueue } from "@/hooks/useExerciseQueue";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
