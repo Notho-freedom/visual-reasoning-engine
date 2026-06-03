@@ -12,8 +12,9 @@ const DIFFICULTIES: { id: "facile" | "moyen" | "difficile"; label: string }[] = 
   { id: "difficile", label: "Difficile" },
 ];
 
+const RANDOM = "__random__";
 const SCENARIOS = [
-  { id: "", label: "Aléatoire" },
+  { id: RANDOM, label: "Aléatoire" },
   { id: "freeFall", label: "Chute libre" },
   { id: "inclinedPlane", label: "Plan incliné" },
   { id: "inclinedPulley", label: "Plan + poulie" },
