@@ -4,22 +4,16 @@
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const LOVABLE_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-// Modèles gratuits OpenRouter, ordonnés du plus capable au plus léger
-// Tous supportent tool calling
+// Modèles gratuits OpenRouter. La plupart des endpoints :free ont été dépréciés
+// fin 2025 → on garde une liste courte et on tombe vite sur Lovable AI.
 export const FREE_TEXT_MODELS = [
-  "deepseek/deepseek-chat-v3.1:free",
-  "deepseek/deepseek-r1:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen-2.5-72b-instruct:free",
-  "google/gemini-2.0-flash-exp:free",
-  "mistralai/mistral-small-3.2-24b-instruct:free",
+  "deepseek/deepseek-chat-v3.5:free",
+  "qwen/qwen3-coder:free",
 ];
 
-// Vision (pour extract-document avec image)
+// Vision
 export const FREE_VISION_MODELS = [
-  "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.2-90b-vision-instruct:free",
-  "qwen/qwen2.5-vl-72b-instruct:free",
+  "qwen/qwen2.5-vl-32b-instruct:free",
 ];
 
 const LOVABLE_FALLBACK_TEXT = "google/gemini-3-flash-preview";
