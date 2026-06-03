@@ -40,7 +40,7 @@ const GenerateExerciseButton: React.FC<Props> = ({ onGenerated, disabled }) => {
   const handleGenerate = async () => {
     setLoading(true);
     try {
-      const res = await generateExercise({ difficulty, scenario: scenario || undefined });
+      const res = await generateExercise({ difficulty, scenario: scenario === RANDOM ? undefined : scenario });
       onGenerated(res.statement);
       setOpen(false);
       toast({
