@@ -34,7 +34,7 @@ const GenerateExerciseButton: React.FC<Props> = ({ onGenerated, disabled }) => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [difficulty, setDifficulty] = useState<"facile" | "moyen" | "difficile">("moyen");
-  const [scenario, setScenario] = useState<string>("");
+  const [scenario, setScenario] = useState<string>(RANDOM);
   const [loading, setLoading] = useState(false);
 
   const handleGenerate = async () => {
