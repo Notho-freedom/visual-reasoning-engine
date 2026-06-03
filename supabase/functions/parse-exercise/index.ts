@@ -432,25 +432,42 @@ function validate(json: any): ValidationResult {
   return { ok: errors.length === 0, errors };
 }
 
-// Patch local minimal — comble les manques sûrs
-function patchDefaults(json: any): any {
+// Récupère une valeur SI depuis l'extraction par rôle (premier match)
+function findExtracted(extraction: Extraction | null, role: string): number | undefined {
+  if (!extraction?.parameters) return undefined;
+  const p = extraction.parameters.find(x => x.role === role);
+  if (!p) return undefined;
+  return toSI(p.value, p.unit, p.role);
+}
+
+// Patch local minimal — comble les manques sûrs en utilisant l'extraction
+function patchDefaults(json: any, extraction: Extraction | null = null): any {
   if (!json?.diagram) return json;
   const d = json.diagram;
   d.params = d.params ?? {};
+  const get = (role: string) => findExtracted(extraction, role);
+
   if (d.scenario === "inclined_plane" || d.scenario === "inclined_pulley") {
-    if (typeof d.params.angle !== "number") d.params.angle = 30;
-    if (typeof d.params.length !== "number") d.params.length = 4;
+    if (typeof d.params.angle !== "number") d.params.angle = get("angle") ?? 30;
+    if (typeof d.params.length !== "number") d.params.length = get("length") ?? get("distance") ?? 4;
   }
   if (d.scenario === "projectile") {
-    if (typeof d.params.v0 !== "number") d.params.v0 = 20;
-    if (typeof d.params.theta !== "number") d.params.theta = 45;
+    if (typeof d.params.v0 !== "number") d.params.v0 = get("initial_speed") ?? 20;
+    if (typeof d.params.theta !== "number") d.params.theta = get("angle") ?? 45;
+    const h0 = get("height");
+    if (typeof d.params.h0 !== "number" && h0 != null) d.params.h0 = h0;
   }
   if (d.scenario === "pendulum") {
-    if (typeof d.params.length !== "number") d.params.length = 1.2;
-    if (typeof d.params.angle !== "number") d.params.angle = 20;
+    if (typeof d.params.length !== "number") d.params.length = get("length") ?? 1.2;
+    if (typeof d.params.angle !== "number") d.params.angle = get("angle") ?? 20;
   }
   if (d.scenario === "spring") {
-    if (typeof d.params.k !== "number") d.params.k = 50;
+    if (typeof d.params.k !== "number") d.params.k = get("spring_const") ?? 50;
+  }
+  // Masse: si un objet n'a pas de masse, on injecte la masse extraite
+  const m = get("mass");
+  if (m != null) {
+    (d.objects ?? []).forEach((o: any) => { if (typeof o.mass !== "number") o.mass = m; });
   }
   // Filtrer forces orphelines
   const ids = new Set((d.objects ?? []).map((o: any) => o.id));
