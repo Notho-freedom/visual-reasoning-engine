@@ -104,7 +104,7 @@ const GenerateExerciseButton: React.FC<Props> = ({ onGenerated, disabled }) => {
             </SelectTrigger>
             <SelectContent>
               {SCENARIOS.map((s) => (
-                <SelectItem key={s.id || "random"} value={s.id} className="text-xs">
+                <SelectItem key={s.id} value={s.id} className="text-xs">
                   {s.label}
                 </SelectItem>
               ))}
