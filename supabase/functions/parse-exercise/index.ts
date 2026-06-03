@@ -617,7 +617,7 @@ serve(async (req) => {
     // Patch local final si toujours KO
     if (!v.ok) {
       console.warn("Validation 2 KO, patch local:", v.errors);
-      result.json = patchDefaults(result.json);
+      result.json = patchDefaults(result.json, extraction);
     }
 
     // Annoter avec le provider/modèle utilisé pour le badge UI
