@@ -145,10 +145,18 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
       });
     }
 
-    // Forces (poids)
+    // Forces (poids, traînée…)
     spec.forces.filter((f) => f.target === obj.id).forEach((f) => {
       let vec: Vec2 = { x: 0, y: 0 };
       if (f.type === "weight") vec = weight(m, g);
+      else if (f.type === "drag" || f.type === "friction") {
+        // opposée à la vitesse
+        const vMag = Math.hypot(vx, vy);
+        if (vMag > 1e-6) {
+          const mag = f.value ?? 1;
+          vec = { x: -(vx / vMag) * mag * 50, y: -(vy / vMag) * mag * 50 };
+        }
+      }
       else if (f.direction) vec = customForce(f.direction, f.value ?? m * g);
       const mag = Math.hypot(vec.x, vec.y);
       if (mag < 1e-6) return;
@@ -156,7 +164,7 @@ export function computeProjectile(spec: DiagramSpec, constants: Record<string, n
       forces.push({
         id: f.id,
         label: f.label,
-        magnitude: f.magnitude,
+        magnitude: f.magnitude ?? (f.value ? `${f.value.toFixed(2)} N` : undefined),
         start: center,
         end: { x: center.x + (vec.x / mag) * ap, y: center.y - (vec.y / mag) * ap },
         color: f.color ?? FORCE_COLORS[f.type] ?? FORCE_COLORS.custom,
