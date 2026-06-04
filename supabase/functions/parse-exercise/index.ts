@@ -909,14 +909,15 @@ serve(async (req) => {
       }
     }
 
-    // Patch local final si toujours KO
-    if (!v.ok) {
-      console.warn("Validation 2 KO, patch local:", v.errors);
-      result.json = patchDefaults(result.json, extraction);
-    }
+    // REPAIR systématique : objects/forces/timeline reconstruits si vides ou incomplets
+    result.json = repairPlan(result.json, scenario, extraction, exercise);
+
+    // Revalidation post-repair (informative)
+    const finalV = validate(result.json);
+    if (!finalV.ok) console.warn("Post-repair validation warnings:", finalV.errors);
 
     // Annoter avec le provider/modèle utilisé pour le badge UI
-    result.json._meta = { provider: result.provider, model: result.model };
+    result.json._meta = { provider: result.provider, model: result.model, repaired: !v.ok };
 
     return new Response(JSON.stringify(result.json), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
