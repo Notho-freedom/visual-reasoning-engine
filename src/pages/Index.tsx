@@ -167,7 +167,15 @@ const Index = () => {
           : `Schéma mis à jour ✓ — ${result.timeline.length} étapes.`;
         setChatMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: diff }]);
       }
-      toast({ title: "Schéma généré", description: `${result.timeline.length} étapes — ${result.meta.scenario}` });
+      if (result.timeline.length < 2) {
+        toast({
+          title: "Résolution incomplète",
+          description: "Le moteur n'a pas pu détailler la résolution. Reformule ou simplifie l'énoncé.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Schéma généré", description: `${result.timeline.length} étapes — ${result.meta.scenario}` });
+      }
     } catch (err) {
       toast({ title: "Erreur", description: err instanceof Error ? err.message : "Impossible d'analyser", variant: "destructive" });
       if (opts.chatPrompt) {
