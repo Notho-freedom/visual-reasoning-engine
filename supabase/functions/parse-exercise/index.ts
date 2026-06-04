@@ -100,8 +100,9 @@ function detectVariant(exercise: string, scenario: ScenarioId): Record<string, n
 const EXTRACTOR_SYSTEM = `Tu es un extracteur d'énoncés de physique en français.
 Pour chaque énoncé, retourne via l'outil:
 - parameters: TOUS les nombres mentionnés avec leur symbole, valeur, unité d'origine et rôle.
-  Rôles autorisés: angle, mass, friction_coef, initial_speed, height, length, spring_const,
-  resistance, capacitance, voltage, current, gravity, distance, time, force_value, other.
+  Rôles autorisés: angle, mass, friction_coef, initial_speed, final_speed, height, length, spring_const,
+  resistance, capacitance, voltage, current, gravity, distance, time, force_value, drag_force, work, energy, acceleration, other.
+  IMPORTANT: traite les nombres français avec virgule comme décimaux (ex: "0,15" => 0.15 ; "2,0 kg" => 2.0).
 - entities: les solides/objets distincts (id court, label lisible, type: block|ball|particle|mass|circuit_component).
 - liaisons: liens physiques (corde entre m1 et m2, ressort entre mur et m, poulie reliant m1 et m2…).
 - question: ce qu'on demande de calculer (texte court, ex: "accélération et tension").
