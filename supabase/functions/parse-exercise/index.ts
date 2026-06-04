@@ -184,6 +184,9 @@ function toSI(value: number, unit: string | undefined, role: string): number {
     if (u === "kω" || u === "kohm" || u === "kohms") return value * 1000;
     if (u === "mω" || u === "mohm") return value * 1e6;
   }
+  if (role === "work" || role === "energy") {
+    if (u === "kj") return value * 1000;
+  }
   return value;
 }
 
